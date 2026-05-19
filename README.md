@@ -22,6 +22,17 @@ Part of [MayAI CLI](https://mayai.it).
 
 ## Installation
 
+From [PyPI](https://pypi.org/project/mayai-linkedin-cli/) (recommended):
+
+```bash
+pip install mayai-linkedin-cli
+playwright install chromium
+```
+
+The second command downloads the Chromium binary that Playwright drives
+during `linkedin auth login`. The CLI is exposed as the `linkedin`
+command on your `$PATH`.
+
 From source:
 
 ```bash
@@ -31,15 +42,7 @@ make install
 ```
 
 The `make install` target installs the package in editable mode and
-runs `playwright install chromium` so the browser-based login flow has
-a Chromium binary to drive.
-
-Or directly with pip:
-
-```bash
-pip install -e .
-playwright install chromium
-```
+runs `playwright install chromium`.
 
 For local development (adds `pytest`, `ruff`):
 
@@ -60,16 +63,21 @@ linkedin auth status
 # 3. Find someone
 linkedin --json search people "Mario Rossi"
 
-# 4. Read their profile by public id
+# 4. Read their profile by public id (or full URL)
 linkedin --json profile get mario-rossi-9558832a
+linkedin --json profile get https://www.linkedin.com/in/mario-rossi-9558832a
 
-# 5. Latest 40 first-degree connections
+# 5. Send a connection request (dry-run first if you want to see the payload)
+linkedin connections send mario-rossi-9558832a --dry-run
+linkedin connections send mario-rossi-9558832a
+
+# 6. Latest 40 first-degree connections
 linkedin --json connections list
 
-# 6. Read the most recent conversations
+# 7. Read the most recent conversations
 linkedin --json messages list
 
-# 7. Send a 1:1 message (member id from `profile get`)
+# 8. Send a 1:1 message (member id from `profile get`)
 linkedin messages send 12345678 "Ciao Mario, parliamo?"
 ```
 
@@ -80,12 +88,12 @@ linkedin messages send 12345678 "Ciao Mario, parliamo?"
 | `linkedin auth login [--headless] [--timeout S]` | Open Chromium, wait for the user to sign in, capture `li_at` + `JSESSIONID`, resolve the user's own `urn:li:fsd_profile:…`. |
 | `linkedin auth status` | Show whether a session is stored (masked) and which member URN was captured. |
 | `linkedin auth logout` | Delete saved cookies + encryption key. |
-| `linkedin profile get <username-or-url>` | Fetch a single profile by vanity public id or full LinkedIn URL. |
+| `linkedin profile get <username-or-url>` | Fetch a single profile by vanity public id (e.g. `mario-rossi-9558832a`) or full URL (`https://www.linkedin.com/in/…`). Returns name, headline, location, connections count, and `profile_url`. |
 | `linkedin search people <query> [--company N] [--title R]` | People search; `--company` / `--title` fold into the keyword string. |
 | `linkedin search companies <query>` | Companies search via the REST search-clusters endpoint. |
 | `linkedin connections list [--limit N]` | First-degree connections, newest first. |
 | `linkedin connections pending` | Incoming connection requests awaiting response. |
-| `linkedin connections send <profile-id> [--dry-run]` | Send a connection request. Accepts a public id or a profile URN. |
+| `linkedin connections send <profile-id> [--dry-run]` | Send a connection request. `<profile-id>` accepts a public id (resolved to a URN via an extra `profile get` call) or an `urn:li:fsd_profile:…` / `urn:li:member:…` URN. Increments the daily connections quota only on a successful POST. |
 | `linkedin messages list` | Latest conversations from the inbox. |
 | `linkedin messages send <recipient> <text> [--dry-run]` | Send a 1:1 message. `recipient` is a numeric member id or `urn:li:member:N`. |
 
@@ -97,6 +105,7 @@ These work in any position (before or after the subcommand):
 |---|---|
 | `--json` | Emit one JSON object per line (NDJSON). |
 | `--verbose` | Log request URL, status, timing, and a body preview to stderr. |
+| `--no-throttle` | Skip the jittered inter-request delay **and** daily quota checks. Use at your own risk — this is the flag most likely to get an account flagged. |
 | `-h`, `--help` | Show help for the current command. |
 
 ### Exit codes
@@ -260,19 +269,43 @@ Playwright captures the cookie verbatim, *including* those quotes.
 of truth — used both by `api/client.py` on every request and by
 `auth/browser_login.py` for the `/me` lookup at login time.
 
-### Rate limiting
+### Throttling and daily quotas
 
-Every `LinkedInClient` enforces a ~1.5 s minimum delay between requests
-to a single instance (`DEFAULT_RATE_LIMIT_S`). This matches what the web
-client does loosely and is the main reason this tool isn't immediately
-flagged. **Do not** disable it in a loop. If you get back HTTP 429:
+LinkedIn's anti-abuse heuristics are tuned to spot mechanical traffic
+— evenly-spaced bursts get flagged much faster than noisy human-paced
+activity, and the absolute volume per day matters too. The CLI defends
+against both:
+
+**Jittered delay between requests.** Every `LinkedInClient` sleeps a
+random `uniform(2.0, 6.0)` seconds between requests
+(`JITTER_MIN_S` / `JITTER_MAX_S` in `api/client.py`). The first request
+in a session goes immediately; subsequent ones wait.
+
+**Per-account daily quotas.** State lives at
+`~/.config/mayai-cli/linkedin/quotas.json` and resets automatically at
+local midnight. When a limit is hit the offending command exits 1 with a
+clear error.
+
+| Quota | Limit | Counted when |
+|---|---|---|
+| `connections` | 15 per day | A successful `linkedin connections send` POST. |
+| `messages` | 25 per day | Any `linkedin messages send` call (incremented before the POST so we never double-send). |
+| `api_total` | 200 per day | Every HTTP request to Voyager — search, profile lookups, listings, sends. |
+
+**`--no-throttle`.** Disables both the jitter and the quota checks. The
+flag exists for power users who know exactly what they're doing (e.g.
+running a one-shot script under a tight time budget). It is the single
+fastest way to get an account flagged — only use it if you accept the
+risk and ideally on a non-primary account.
+
+If you ever do see HTTP 429 from LinkedIn:
 
 ```
 error: rate limited by LinkedIn — wait a few minutes and try again
 ```
 
-…stop and wait. Don't retry in a tight loop; LinkedIn will keep the
-account flagged longer the more you hit them.
+…stop and wait. Don't retry in a tight loop; LinkedIn extends the
+penalty the more you hit them.
 
 ## Why this was hard
 

@@ -3,22 +3,40 @@ requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [project]
-name = "linkedin-cli"
+name = "mayai-linkedin-cli"
 version = "0.1.0"
-description = "CLI for LinkedIn (internal API) — built for AI agents and developers"
+description = "CLI for LinkedIn (internal Voyager API) — built for AI agents and developers"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
 authors = [{ name = "MayAI", email = "info@mayai.it" }]
-keywords = ["linkedin", "cli", "ai-agents", "voyager"]
+maintainers = [{ name = "MayAI", email = "info@mayai.it" }]
+keywords = [
+    "linkedin",
+    "cli",
+    "ai-agents",
+    "voyager",
+    "automation",
+    "scraping",
+    "playwright",
+]
 classifiers = [
     "Development Status :: 3 - Alpha",
     "Environment :: Console",
     "Intended Audience :: Developers",
+    "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
+    "Operating System :: MacOS",
+    "Operating System :: POSIX :: Linux",
+    "Operating System :: Microsoft :: Windows",
     "Programming Language :: Python :: 3",
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Internet",
+    "Topic :: Software Development :: Libraries :: Python Modules",
+    "Topic :: Utilities",
+    "Typing :: Typed",
 ]
 dependencies = [
     "click>=8.1.0",
@@ -29,8 +47,10 @@ dependencies = [
 
 [project.optional-dependencies]
 dev = [
+    "build>=1.2.0",
     "pytest>=8.0.0",
     "ruff>=0.5.0",
+    "twine>=5.0.0",
 ]
 
 [project.scripts]
@@ -39,6 +59,8 @@ linkedin = "linkedin_cli.main:cli"
 [project.urls]
 Homepage = "https://mayai.it"
 Repository = "https://github.com/mayai-it/linkedin-cli"
+Issues = "https://github.com/mayai-it/linkedin-cli/issues"
+Changelog = "https://github.com/mayai-it/linkedin-cli/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["linkedin_cli"]

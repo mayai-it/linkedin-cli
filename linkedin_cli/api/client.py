@@ -23,6 +23,7 @@ from linkedin_cli.api.endpoints import (
     SEARCH_PEOPLE_QUERY_ID_FALLBACKS,
     SEARCH_PEOPLE_RESULTS_PAGE,
 )
+from linkedin_cli.api.quotas import QuotaExceededError, check_and_increment
 from linkedin_cli.auth import Credentials
 
 USER_AGENT = (
@@ -61,18 +62,21 @@ _SEARCH_QUERY_ID_RE_LOOSE = re.compile(
 class LinkedInClient:
     """Thin wrapper around httpx with Voyager-specific defaults."""
 
-    # Be polite by default — LinkedIn rate-limits aggressively.
-    DEFAULT_RATE_LIMIT_S = 1.5
+    # Jittered delay between requests so traffic doesn't look mechanical.
+    # LinkedIn's anti-bot heuristics flag tight, evenly-spaced bursts much
+    # faster than a noisy human-paced cadence.
+    JITTER_MIN_S = 2.0
+    JITTER_MAX_S = 6.0
 
     def __init__(
         self,
         creds: Credentials,
         verbose: bool = False,
-        rate_limit_s: float | None = None,
+        throttle: bool = True,
     ) -> None:
         self.creds = creds
         self.verbose = verbose
-        self.rate_limit_s = self.DEFAULT_RATE_LIMIT_S if rate_limit_s is None else rate_limit_s
+        self.throttle = throttle
         self._last_request_at = 0.0
         self._search_query_id: str | None = None  # cached per session
 
@@ -125,10 +129,14 @@ class LinkedInClient:
     # ---- core HTTP ----------------------------------------------------------
 
     def _throttle(self) -> None:
-        if self.rate_limit_s <= 0:
+        if not self.throttle:
             return
+        # First request: no prior timestamp to throttle against.
+        if self._last_request_at == 0.0:
+            return
+        target = random.uniform(self.JITTER_MIN_S, self.JITTER_MAX_S)
         delta = time.monotonic() - self._last_request_at
-        wait = self.rate_limit_s - delta
+        wait = target - delta
         if wait > 0:
             time.sleep(wait)
 
@@ -144,6 +152,11 @@ class LinkedInClient:
         json_body: Any | None = None,
         extra_headers: dict[str, str] | None = None,
     ) -> httpx.Response:
+        if self.throttle:
+            try:
+                check_and_increment("api_total")
+            except QuotaExceededError as exc:
+                raise LinkedInAPIError(str(exc)) from exc
         self._throttle()
         headers = dict(extra_headers or {})
         started = time.monotonic()

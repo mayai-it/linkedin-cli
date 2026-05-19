@@ -47,9 +47,10 @@ from linkedin_cli.output import emit, error
 
 
 class CLIContext:
-    def __init__(self, as_json: bool, verbose: bool) -> None:
+    def __init__(self, as_json: bool, verbose: bool, throttle: bool = True) -> None:
         self.as_json = as_json
         self.verbose = verbose
+        self.throttle = throttle
 
     def require_credentials(self) -> Credentials:
         try:
@@ -63,7 +64,11 @@ class CLIContext:
         return creds
 
     def client(self) -> LinkedInClient:
-        return LinkedInClient(self.require_credentials(), verbose=self.verbose)
+        return LinkedInClient(
+            self.require_credentials(),
+            verbose=self.verbose,
+            throttle=self.throttle,
+        )
 
 
 pass_ctx = click.make_pass_decorator(CLIContext)
@@ -76,14 +81,24 @@ def common_flags(func):
                   help="Output one JSON object per line (NDJSON).")
     @click.option("--verbose", "_local_verbose", is_flag=True, default=False,
                   help="Log request details and timings to stderr.")
+    @click.option("--no-throttle", "_local_no_throttle", is_flag=True, default=False,
+                  help="Skip jitter delay and daily quota checks (at your own risk).")
     @functools.wraps(func)
-    def wrapper(*args, _local_json: bool, _local_verbose: bool, **kwargs):
+    def wrapper(
+        *args,
+        _local_json: bool,
+        _local_verbose: bool,
+        _local_no_throttle: bool,
+        **kwargs,
+    ):
         cli_ctx = click.get_current_context().find_object(CLIContext)
         if cli_ctx is not None:
             if _local_json:
                 cli_ctx.as_json = True
             if _local_verbose:
                 cli_ctx.verbose = True
+            if _local_no_throttle:
+                cli_ctx.throttle = False
         return func(*args, **kwargs)
 
     return wrapper
@@ -115,9 +130,11 @@ def handle_api_errors(func):
 @click.version_option(__version__, prog_name="linkedin")
 @click.option("--json", "as_json", is_flag=True, help="Output one JSON object per line (NDJSON).")
 @click.option("--verbose", is_flag=True, help="Log request details and timings to stderr.")
+@click.option("--no-throttle", "no_throttle", is_flag=True,
+              help="Skip jitter delay and daily quota checks (at your own risk).")
 @click.pass_context
-def cli(ctx: click.Context, as_json: bool, verbose: bool) -> None:
-    ctx.obj = CLIContext(as_json=as_json, verbose=verbose)
+def cli(ctx: click.Context, as_json: bool, verbose: bool, no_throttle: bool) -> None:
+    ctx.obj = CLIContext(as_json=as_json, verbose=verbose, throttle=not no_throttle)
 
 
 # ---------------------------------------------------------------------------

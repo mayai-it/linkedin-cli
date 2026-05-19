@@ -12,6 +12,7 @@ from linkedin_cli.api.endpoints import (
     INVITATIONS_PENDING,
     INVITATIONS_SEND,
 )
+from linkedin_cli.api.quotas import QuotaExceededError, check_and_increment
 
 
 def list_connections(client: LinkedInClient, limit: int = 40) -> list[dict[str, Any]]:
@@ -105,11 +106,20 @@ def list_pending_invitations(client: LinkedInClient) -> list[dict[str, Any]]:
 def send_invitation(client: LinkedInClient, profile_id: str) -> dict[str, Any]:
     """Send a connection request to a profile.
 
-    `profile_id` accepts a bare numeric id, an `urn:li:fsd_profile:...` URN,
-    or a `urn:li:member:...` URN — we normalize to the URN form Voyager
-    expects.
+    `profile_id` accepts a bare public id (e.g. `daniele-giovanardi-282462390`),
+    an `urn:li:fsd_profile:...` URN, or a `urn:li:member:...` URN. Public ids
+    are resolved to an fsd_profile URN via `get_profile` before we POST.
+    The daily `connections` quota is checked before the network call and only
+    consumed when LinkedIn accepts the request.
     """
-    profile_urn = _normalize_profile_urn(profile_id)
+    profile_urn = _resolve_profile_urn(client, profile_id)
+
+    if client.throttle:
+        try:
+            check_and_increment("connections")
+        except QuotaExceededError as exc:
+            raise LinkedInAPIError(str(exc)) from exc
+
     body = {
         "trackingId": _tracking_id(),
         "invitations": [],
@@ -127,6 +137,34 @@ def send_invitation(client: LinkedInClient, profile_id: str) -> dict[str, Any]:
             return {"status": "already-invited", "profile": profile_urn}
         raise
     return {"status": "ok", "profile": profile_urn}
+
+
+def _resolve_profile_urn(client: LinkedInClient, value: str) -> str:
+    """Return the `urn:li:fsd_profile:...` form for a public id or URN.
+
+    If `value` already looks like a URN, just normalize. Otherwise we treat
+    it as a public id and look it up via `get_profile`, which costs one
+    extra API request (also counted against the api_total quota).
+    """
+    value = value.strip()
+    if value.startswith("urn:li:fsd_profile:") or value.startswith("urn:li:member:"):
+        return value
+    # Heuristic: a bare ASCII alnum/dash/underscore token that isn't already a
+    # URN is a public id (e.g. `daniele-giovanardi-282462390`). Anything else
+    # is invalid.
+    if not _BARE_ID_RE.match(value):
+        raise LinkedInAPIError(f"invalid profile id: {value!r}")
+
+    # Import here to avoid a circular import at module load.
+    from linkedin_cli.api.profile import get_profile
+
+    profile = get_profile(client, value)
+    if not profile.profile_id:
+        raise LinkedInAPIError(
+            f"could not resolve public id {value!r} to a profile URN — "
+            "check the spelling or pass the URN directly"
+        )
+    return profile.profile_id
 
 
 def _format_connection(
@@ -172,12 +210,3 @@ def _join_name(first: Any, last: Any) -> str:
 
 
 _BARE_ID_RE = re.compile(r"^[A-Za-z0-9_-]+$")
-
-
-def _normalize_profile_urn(value: str) -> str:
-    value = value.strip()
-    if value.startswith("urn:li:"):
-        return value
-    if _BARE_ID_RE.match(value):
-        return f"urn:li:fsd_profile:{value}"
-    raise LinkedInAPIError(f"invalid profile id: {value!r}")

@@ -47,13 +47,17 @@ def _parse_profile(payload: dict[str, Any], fallback_username: str) -> Profile:
         return Profile(public_id=fallback_username)
 
     public_id = candidate.get("publicIdentifier") or fallback_username
+    first_name = _text(candidate.get("firstName"))
+    last_name = _text(candidate.get("lastName"))
     profile = Profile(
         profile_id=_first_str(candidate.get("entityUrn"), candidate.get("objectUrn")),
         public_id=public_id,
-        first_name=_text(candidate.get("firstName")),
-        last_name=_text(candidate.get("lastName")),
+        first_name=first_name,
+        last_name=last_name,
+        name=" ".join(p for p in [first_name, last_name] if p).strip(),
         headline=_text(candidate.get("headline")),
         location=_text(candidate.get("locationName")) or _text(candidate.get("geoLocationName")),
+        connections_count=_connections_count(candidate, payload),
         profile_url=f"{BASE}/in/{public_id}/",
     )
 
@@ -63,11 +67,35 @@ def _parse_profile(payload: dict[str, Any], fallback_username: str) -> Profile:
     profile.company = _first_str(
         position.get("companyName"),
         candidate.get("currentCompany"),
-        _text(candidate.get("primaryLocale")),
     )
     profile.title = _first_str(position.get("title"), candidate.get("currentTitle"))
     profile.member_id = _member_id_from_urn(profile.profile_id)
     return profile
+
+
+def _connections_count(candidate: dict[str, Any], payload: dict[str, Any]) -> int:
+    """Pull `connections` (or related count) out of the response.
+
+    LinkedIn exposes connections under several names depending on the
+    decoration version: `connections`, `connectionsCount`, or wrapped in
+    a `topCardSupplementary` block in `included[]`. We try them in order.
+    """
+    for key in ("connectionsCount", "connections"):
+        value = candidate.get(key)
+        if isinstance(value, int):
+            return value
+        if isinstance(value, dict):
+            inner = value.get("paging") or value
+            if isinstance(inner.get("total"), int):
+                return int(inner["total"])
+    # Walk included[] for a node that carries a connections counter.
+    for entry in payload.get("included", []) or []:
+        if not isinstance(entry, dict):
+            continue
+        for key in ("connectionsCount", "numConnections"):
+            if isinstance(entry.get(key), int):
+                return int(entry[key])
+    return 0
 
 
 def _text(node: Any) -> str:

@@ -17,10 +17,12 @@ class Profile:
     member_id: str = ""           # numeric urn:li:member:NNNN if known
     first_name: str = ""
     last_name: str = ""
+    name: str = ""                # joined "First Last" — set for display
     headline: str = ""
     location: str = ""
     company: str = ""
     title: str = ""
+    connections_count: int = 0    # from TopCardSupplementary (-1 = hidden)
     profile_url: str = ""
 
     def to_dict(self) -> dict[str, Any]:

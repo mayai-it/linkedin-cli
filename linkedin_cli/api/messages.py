@@ -12,6 +12,7 @@ from linkedin_cli.api.endpoints import (
     CONVERSATIONS_QUERY_ID,
     MESSAGES_SEND,
 )
+from linkedin_cli.api.quotas import QuotaExceededError, check_and_increment
 from linkedin_cli.models.profile import Conversation
 
 
@@ -86,6 +87,11 @@ def _build_included_index(payload: dict[str, Any]) -> dict[str, dict[str, Any]]:
 def send_message(client: LinkedInClient, recipient: str, text: str) -> dict[str, Any]:
     """Send a 1:1 message to a recipient by member id or URN."""
     member_urn = _to_member_urn(recipient)
+    if client.throttle:
+        try:
+            check_and_increment("messages")
+        except QuotaExceededError as exc:
+            raise LinkedInAPIError(str(exc)) from exc
     body = {
         "recipients": {
             "com.linkedin.voyager.messaging.MessagingMemberRecipients": {

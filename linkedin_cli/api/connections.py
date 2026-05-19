@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import re
-from datetime import datetime, timezone
+from datetime import UTC, datetime
 from typing import Any
 
 from linkedin_cli.api.client import LinkedInAPIError, LinkedInClient, _tracking_id
@@ -85,7 +85,9 @@ def list_pending_invitations(client: LinkedInClient) -> list[dict[str, Any]]:
         from_member = invitation.get("fromMember") or {}
         out.append(
             {
-                "invitation_id": invitation.get("entityUrn") or invitation.get("invitationId") or "",
+                "invitation_id": (
+                    invitation.get("entityUrn") or invitation.get("invitationId") or ""
+                ),
                 "shared_secret": invitation.get("sharedSecret", ""),
                 "from_name": _join_name(
                     from_member.get("firstName"),
@@ -150,7 +152,7 @@ def _format_timestamp_ms(ms: int) -> str:
     if not ms:
         return ""
     try:
-        return datetime.fromtimestamp(ms / 1000, tz=timezone.utc).strftime("%Y-%m-%d")
+        return datetime.fromtimestamp(ms / 1000, tz=UTC).strftime("%Y-%m-%d")
     except (ValueError, OverflowError, OSError):
         return ""
 

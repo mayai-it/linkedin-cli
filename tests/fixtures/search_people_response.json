@@ -1,0 +1,85 @@
+{
+  "data": {
+    "data": {
+      "searchDashClustersByAll": {
+        "metadata": {
+          "totalResultCount": 8758,
+          "searchId": "abc123"
+        },
+        "*elements": [
+          "urn:li:fsd_searchDashClusterViewModel:PRIMARY_PEOPLE_RESULT"
+        ]
+      }
+    }
+  },
+  "included": [
+    {
+      "$type": "com.linkedin.voyager.dash.search.SearchClusterViewModel",
+      "entityUrn": "urn:li:fsd_searchDashClusterViewModel:PRIMARY_PEOPLE_RESULT",
+      "*items": [
+        "urn:li:fsd_searchDashClusterItem:1",
+        "urn:li:fsd_searchDashClusterItem:2",
+        "urn:li:fsd_searchDashClusterItem:3"
+      ]
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.search.SearchItem",
+      "entityUrn": "urn:li:fsd_searchDashClusterItem:1",
+      "position": 1,
+      "item": {
+        "*entityResult": "urn:li:fsd_entityResultViewModel:(urn:li:fsd_profile:ACoAAA_MARIO_ROSSI_XYZ,SEARCH_SRP,DEFAULT)",
+        "bannerCard": null,
+        "cluster": null,
+        "navigationContext": null
+      }
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.search.SearchItem",
+      "entityUrn": "urn:li:fsd_searchDashClusterItem:2",
+      "position": 2,
+      "item": {
+        "*entityResult": "urn:li:fsd_entityResultViewModel:(urn:li:fsd_profile:ACoAAB_ANNA_BIANCHI_PQR,SEARCH_SRP,DEFAULT)",
+        "bannerCard": null,
+        "cluster": null,
+        "navigationContext": null
+      }
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.search.SearchItem",
+      "entityUrn": "urn:li:fsd_searchDashClusterItem:3",
+      "position": 3,
+      "item": {
+        "*entityResult": "urn:li:fsd_entityResultViewModel:(urn:li:fsd_profile:ACoAAC_LUIGI_VERDI_MNO,SEARCH_SRP,DEFAULT)",
+        "bannerCard": null,
+        "cluster": null,
+        "navigationContext": null
+      }
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.identity.profile.Profile",
+      "entityUrn": "urn:li:fsd_profile:ACoAAA_MARIO_ROSSI_XYZ",
+      "firstName": "Mario",
+      "lastName": "Rossi",
+      "occupation": "CTO at MayAI",
+      "publicIdentifier": "mario-rossi-9558832a",
+      "navigationUrl": "https://www.linkedin.com/in/mario-rossi-9558832a?miniProfileUrn=urn%3Ali%3Afsd_profile%3AACoAAA_MARIO_ROSSI_XYZ"
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.identity.profile.Profile",
+      "entityUrn": "urn:li:fsd_profile:ACoAAB_ANNA_BIANCHI_PQR",
+      "firstName": "Anna",
+      "lastName": "Bianchi",
+      "occupation": "CEO @ Example",
+      "publicIdentifier": "annabianchi",
+      "navigationUrl": "https://www.linkedin.com/in/annabianchi?miniProfileUrn=urn%3Ali%3Afsd_profile%3AACoAAB_ANNA_BIANCHI_PQR"
+    },
+    {
+      "$type": "com.linkedin.voyager.dash.identity.profile.Profile",
+      "entityUrn": "urn:li:fsd_profile:ACoAAC_LUIGI_VERDI_MNO",
+      "firstName": "Luigi",
+      "lastName": "Verdi",
+      "occupation": "Senior Software Engineer",
+      "publicIdentifier": "luigi-verdi-123"
+    }
+  ]
+}

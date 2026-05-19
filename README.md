@@ -1,3 +1,10 @@
+> [!WARNING]
+> This tool uses LinkedIn's internal Voyager API, which is not publicly documented
+> and is not officially supported by LinkedIn. Usage may violate LinkedIn's
+> [Terms of Service (Section 8.2)](https://www.linkedin.com/legal/user-agreement).
+> LinkedIn may temporarily or permanently restrict your account.
+> **Use at your own risk, preferably on a non-primary account.**
+
 # linkedin-cli
 
 Command-line client for **LinkedIn**, driving the internal Voyager API the

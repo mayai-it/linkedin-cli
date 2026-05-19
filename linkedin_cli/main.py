@@ -41,7 +41,6 @@ from linkedin_cli.auth import (
 from linkedin_cli.auth.browser_login import BrowserLoginError, browser_login
 from linkedin_cli.output import emit, error
 
-
 # ---------------------------------------------------------------------------
 # Shared CLI context
 # ---------------------------------------------------------------------------

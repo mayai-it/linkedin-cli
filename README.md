@@ -7,17 +7,6 @@ no API key — just session cookies captured from a real browser.
 
 Part of [MayAI CLI](https://mayai.it).
 
-> ## Terms of Service warning
->
-> LinkedIn forbids automated access to its platform in its [User Agreement](https://www.linkedin.com/legal/user-agreement)
-> (sections 8.2 / 8.3). This tool is intended for **personal and research
-> use** on your own account — the kind of thing you'd do manually, just
-> scripted. **Do not** use it for mass scraping, bulk outreach, spam,
-> evading platform rate limits, or any commercial scraping operation. The
-> CLI deliberately defaults to a ~1.5 s minimum delay between requests for
-> exactly this reason. LinkedIn may rate-limit, restrict, or terminate
-> accounts that look automated; you are responsible for your usage.
-
 ## Requirements
 
 - Python 3.11+

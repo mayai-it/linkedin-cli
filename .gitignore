@@ -1,0 +1,47 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+
+# Distribution / packaging
+build/
+dist/
+*.egg-info/
+*.egg
+pip-wheel-metadata/
+
+# Virtual environments
+.venv/
+venv/
+env/
+ENV/
+
+# Test / lint caches
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# Editors / OS
+.vscode/
+.idea/
+*.swp
+.DS_Store
+
+# Local Claude / agent state
+.claude/
+
+# Credentials and local config (never commit LinkedIn session cookies or Fernet keys)
+credentials.json
+*.credentials.json
+key.bin
+.env
+.env.*
+config.json
+
+# Playwright local install / browser binaries
+.playwright/
+playwright-browsers/

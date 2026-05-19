@@ -1,0 +1,136 @@
+linkedin-cli — project structure for LLM context
+=================================================
+
+Purpose
+-------
+A Python CLI (`linkedin`) for interacting with LinkedIn through its
+internal Voyager API. Designed to be consumed by both humans (compact
+pretty-print) and AI agents (NDJSON via `--json`). No API key — uses
+session cookies captured from a real browser via Playwright; cookies
+are encrypted at rest with Fernet.
+
+Top-level layout
+----------------
+linkedin-cli/
+├── CLAUDE.md                # Project-specific instructions for Claude Code
+├── README.md                # User documentation
+├── LICENSE                  # MIT
+├── Makefile                 # install / dev / playwright / test / lint / clean
+├── pyproject.toml           # hatchling build, deps, entry point
+├── .gitignore               # Python + credentials + key.bin + Playwright cache
+├── app_structure_llm.txt    # This file
+├── skills/
+│   ├── install.sh           # Copies the skill to ~/.config/mayai-cli/skills/
+│   └── linkedin-cli.md      # Agent-facing usage guide
+├── linkedin_cli/            # Python package — main code lives here
+│   ├── __init__.py          # Exposes __version__
+│   ├── main.py              # Click entry point; registers all command groups
+│   ├── auth/
+│   │   ├── __init__.py      # Re-exports Credentials + storage helpers
+│   │   ├── credentials.py   # Fernet-encrypted cookie storage + CSRF normalizer
+│   │   └── browser_login.py # Playwright login flow + member_urn resolution
+│   ├── api/
+│   │   ├── __init__.py      # Re-exports LinkedInClient + errors
+│   │   ├── client.py        # httpx client with Voyager headers + rate limiting
+│   │   ├── endpoints.py     # URL constants (versioned queryIds documented)
+│   │   ├── profile.py       # Profile lookup by public id / URL
+│   │   ├── search.py        # People + company search via GraphQL clusters
+│   │   ├── connections.py   # First-degree list, pending invitations, send
+│   │   └── messages.py      # Conversation list + 1:1 message send
+│   ├── models/
+│   │   ├── __init__.py      # Re-exports Profile, SearchHit, Conversation
+│   │   └── profile.py       # Flat dataclasses for the wire shape we emit
+│   └── output/
+│       ├── __init__.py      # Re-exports emit, error
+│       └── formatter.py     # NDJSON for --json, compact human text otherwise
+└── tests/
+    ├── __init__.py
+    └── test_output.py       # Output formatter smoke tests
+
+Entry point
+-----------
+The console script `linkedin = linkedin_cli.main:cli` is declared in
+pyproject.toml. After `make install`, both `linkedin` and
+`python -m linkedin_cli.main` work.
+
+Command groups (registered in main.py)
+--------------------------------------
+auth         login / status / logout — Playwright browser capture, Fernet storage
+profile      get <username-or-url>
+search       people / companies (GraphQL search/dash/clusters + typeahead fallback)
+connections  list / pending / send <profile-id>
+messages     list / send <recipient> <text>
+
+Auth flow
+---------
+1. `linkedin auth login` opens a real Chromium window via Playwright,
+   navigating directly to /feed/. If already authenticated we capture
+   cookies immediately; otherwise the user signs in and we wait for the
+   `li_at` + `JSESSIONID` cookies to appear and the URL to leave the
+   /login|/checkpoint|/uas|/authwall|/signup paths.
+2. After capture we call /voyager/api/me (with the same cookies +
+   Voyager headers) and resolve the user's `urn:li:fsd_profile:<id>`
+   from `miniProfile.entityUrn`. Falls back to /identity/profiles/me,
+   then to decoding the li_at cookie if both endpoints fail.
+3. Cookies + member URN are persisted Fernet-encrypted under
+   ~/.config/mayai-cli/linkedin/.
+
+CSRF
+----
+Every Voyager request must carry a `csrf-token` header equal to the
+JSESSIONID cookie value *with surrounding double-quote characters
+stripped*. `auth/credentials.py:normalize_csrf` is the single source of
+truth; both `api/client.py` (per-request) and `auth/browser_login.py`
+(for the /me lookup) route through it.
+
+Voyager response handling
+-------------------------
+The accept header `application/vnd.linkedin.normalized+json+2.1` makes
+Voyager return URN-referenced JSON: top-level entities are split between
+a `data` tree (with `*key` URN ref fields) and a top-level `included[]`
+array keyed by `entityUrn`. `api/search.py:_deep_resolve` is a recursive
+walker that:
+  - Strips the `*` prefix from any key
+  - Replaces URN-string values with the resolved object from `included[]`
+  - Tracks visited URNs to break cycles
+
+The people-search response goes one step further: `SearchItem.item.
+*entityResult` carries a *composite* URN like
+`urn:li:fsd_entityResultViewModel:(urn:li:fsd_profile:ACoAAA...,
+SEARCH_SRP,DEFAULT)`. `_extract_inner_urn` peels that down to the inner
+`urn:li:fsd_profile:...` which IS in `included[]` and carries
+firstName / lastName / occupation / publicIdentifier.
+
+QueryId rotation
+----------------
+The `voyagerSearchDashClusters.<32hex>` queryId rotates whenever
+LinkedIn ships a new web bundle, and a stale id makes the endpoint
+hard-500. `api/client.py:get_search_people_query_ids` returns an
+ordered list: cached working id → live-scraped from
+`/search/results/people/?keywords=test` HTML → hardcoded fallbacks.
+`api/search.py:search_people` walks the list and stops at the first
+non-500; the winner is cached on the client for the rest of the session.
+
+Output conventions
+------------------
+- Default: compact human pretty-print, empty fields stripped
+- `--json`: NDJSON (one object per line) — what AI agents should consume
+- `--verbose`: logs request URL, status, ms, and body[0:5000] to stderr
+- stderr is reserved for errors (`error: …`) and `[linkedin]` request logs
+- Exit codes: 0 ok, 1 application error, 2 auth (401/403)
+
+Rate limiting
+-------------
+Default 1.5 s minimum between requests on a single `LinkedInClient`
+instance. LinkedIn rate-limits aggressively; the client returns a
+clean "rate limited" error on 429 and a "session expired" error on
+401, both routed through `LinkedInAPIError.status`.
+
+Notes
+-----
+- LinkedIn forbids automated use in its ToS. This tool is for personal
+  and research use — do not scrape at scale.
+- Cookies expire — re-run `linkedin auth login` to refresh.
+- Voyager endpoints and queryIds drift; if everything 500s, run
+  `linkedin auth login` (regen cookies) and let the queryId scraper
+  pick up the current id from the live page.

@@ -11,8 +11,14 @@ from linkedin_cli.api.profile import _extract_username, _parse_profile
     "raw, expected",
     [
         ("daniele-giovanardi-282462390", "daniele-giovanardi-282462390"),
-        ("https://www.linkedin.com/in/daniele-giovanardi-282462390", "daniele-giovanardi-282462390"),
-        ("https://www.linkedin.com/in/daniele-giovanardi-282462390/", "daniele-giovanardi-282462390"),
+        (
+            "https://www.linkedin.com/in/daniele-giovanardi-282462390",
+            "daniele-giovanardi-282462390",
+        ),
+        (
+            "https://www.linkedin.com/in/daniele-giovanardi-282462390/",
+            "daniele-giovanardi-282462390",
+        ),
         (
             "https://www.linkedin.com/in/daniele-giovanardi-282462390?utm_source=share",
             "daniele-giovanardi-282462390",

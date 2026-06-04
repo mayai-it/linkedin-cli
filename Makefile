@@ -1,4 +1,4 @@
-.PHONY: install dev test lint clean playwright
+.PHONY: install dev test lint typecheck clean playwright
 
 PYTHON ?= python3
 
@@ -17,7 +17,10 @@ test:
 	$(PYTHON) -m pytest tests/
 
 lint:
-	$(PYTHON) -m ruff check linkedin_cli/
+	$(PYTHON) -m ruff check linkedin_cli/ tests/
+
+typecheck:
+	$(PYTHON) -m mypy linkedin_cli/
 
 clean:
 	find . -type d -name __pycache__ -prune -exec rm -rf {} +

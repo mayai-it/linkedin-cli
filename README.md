@@ -1,3 +1,14 @@
+[![PyPI version](https://img.shields.io/pypi/v/mayai-linkedin-cli.svg)](https://pypi.org/project/mayai-linkedin-cli/)
+[![Python versions](https://img.shields.io/pypi/pyversions/mayai-linkedin-cli.svg)](https://pypi.org/project/mayai-linkedin-cli/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](LICENSE)
+[![Built for AI agents](https://img.shields.io/badge/Built%20for-AI%20agents-purple)](https://mayai.it)
+[![Tests](https://github.com/mayai-it/linkedin-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/mayai-it/linkedin-cli/actions/workflows/ci.yml)
+[![mypy](https://img.shields.io/badge/mypy-checked-blue)](https://mypy-lang.org/)
+[![Code style: ruff](https://img.shields.io/badge/code%20style-ruff-261230.svg)](https://github.com/astral-sh/ruff)
+[![Conventional Commits](https://img.shields.io/badge/Conventional%20Commits-1.0.0-yellow.svg)](https://conventionalcommits.org)
+
+> Italiano: [README.it.md](README.it.md) — versione ridotta.
+
 > [!WARNING]
 > This tool uses LinkedIn's internal Voyager API, which is not publicly documented
 > and is not officially supported by LinkedIn. Usage may violate LinkedIn's
@@ -7,12 +18,22 @@
 
 # linkedin-cli
 
-Command-line client for **LinkedIn**, driving the internal Voyager API the
-same way the website does. Built for both humans and AI agents:
-context-efficient defaults, NDJSON output for piping into LLMs or `jq`, and
-no API key — just session cookies captured from a real browser.
+Command-line client **and MCP server** for **LinkedIn**, driving the internal
+Voyager API the same way the website does. Built for both humans and AI agents:
+context-efficient defaults, NDJSON output for piping into LLMs or `jq`, a native
+MCP server for tools like Claude Desktop, and no API key — just session cookies
+captured from a real browser.
 
 Part of [MayAI CLI](https://mayai.it).
+
+## Quality bar
+
+- **Cross-platform CI**: Ubuntu / macOS / Windows × Python 3.11 / 3.12 / 3.13,
+  plus a `pip-audit` job — via GitHub Actions.
+- **`ruff` + blocking `mypy`** on every push; **72 tests** run fully offline
+  against mocks (no live LinkedIn traffic, no browser launch).
+- **Two surfaces, one core**: the `linkedin` CLI and the `linkedin-mcp` server
+  share the same Voyager client, throttle, and daily-quota safety net.
 
 ## Requirements
 
@@ -44,11 +65,61 @@ make install
 The `make install` target installs the package in editable mode and
 runs `playwright install chromium`.
 
-For local development (adds `pytest`, `ruff`):
+For local development (adds `pytest`, `ruff`, `mypy`):
 
 ```bash
 make dev
 ```
+
+## MCP Server
+
+linkedin-cli ships with a native MCP server, letting AI agents like Claude
+access your LinkedIn directly — no subprocess, no JSON parsing. It runs over
+stdio and reuses the same session cookies, throttle, and daily quotas as the
+CLI; it refuses to start (exit code `2`) until you've run `linkedin auth login`.
+
+### Setup with Claude Desktop
+
+Add to `~/Library/Application Support/Claude/claude_desktop_config.json`:
+
+```json
+{
+  "mcpServers": {
+    "linkedin": {
+      "command": "/path/to/linkedin-mcp"
+    }
+  }
+}
+```
+
+Find your path with `which linkedin-mcp`.
+
+### Compatible MCP clients
+
+| Client | Status |
+|--------|--------|
+| Claude Desktop | Tested |
+| Cursor | Compatible (same stdio config) |
+| Continue (VS Code) | Compatible (same stdio config) |
+| Zed | Compatible (same stdio config) |
+
+### Available tools
+
+| Tool | Description |
+|------|-------------|
+| `linkedin_profile_get` | Fetch a profile by public id or URL |
+| `linkedin_search_people` | Search people by name / role (`company`, `title`, `limit`) |
+| `linkedin_search_companies` | Search companies by name |
+| `linkedin_connections_list` | List first-degree connections, newest first |
+| `linkedin_connections_pending` | List incoming invitations |
+| `linkedin_messages_list` | List latest conversations |
+| `linkedin_connections_send` | Send a connection request (requires `confirm=True`) |
+| `linkedin_messages_send` | Send a 1:1 message (requires `confirm=True`) |
+| `linkedin_auth_status` | Check authentication status |
+
+The two write tools refuse to act without an explicit `confirm=True`, support
+`dry_run=True`, and are rate-limited per session on top of the daily quotas —
+see the [Safety note](#safety-note-on-write-actions) below.
 
 ## Quick start
 
@@ -115,6 +186,21 @@ These work in any position (before or after the subcommand):
 | `0` | Success |
 | `1` | Application error (network, rate limit, search 500, bad arguments) |
 | `2` | Not authenticated, or session expired — run `linkedin auth login` |
+
+### Safety note on write actions
+
+Connection requests and messages are real, user-visible actions that count
+against daily quotas and feed LinkedIn's anti-abuse heuristics. To avoid
+accidents:
+
+- **CLI**: `connections send` and `messages send` accept `--dry-run` to print
+  the intended action without contacting LinkedIn.
+- **MCP**: the `linkedin_connections_send` and `linkedin_messages_send` tools
+  refuse to act unless the caller passes `confirm=True`, support `dry_run=True`,
+  and are rate-limited to 5 actions per target per 5 minutes per session.
+- **Both** honor the per-account daily quotas (`connections` 15/day, `messages`
+  25/day) unless `--no-throttle` is set — which you should treat as the fastest
+  way to get an account flagged.
 
 ## Authentication
 
@@ -409,9 +495,19 @@ get <public_id>` when you need them):
 make dev          # install with dev extras + Chromium
 make playwright   # install just the Chromium binary
 make test         # run pytest
-make lint         # run ruff
+make lint         # run ruff (linkedin_cli/ + tests/)
+make typecheck    # run mypy linkedin_cli/
 make clean        # remove caches and build artifacts
 ```
+
+Contributing guide and PR checklist: [CONTRIBUTING.md](CONTRIBUTING.md).
+
+## Help
+
+- [docs/AUTHENTICATION.md](docs/AUTHENTICATION.md) — login flow, cookie storage, session lifetime
+- [docs/FAQ.md](docs/FAQ.md) — common questions and gotchas (queryId 500s, rate limits, MCP setup)
+- [CHANGELOG.md](CHANGELOG.md) — release notes
+- [Issues](https://github.com/mayai-it/linkedin-cli/issues) — bug reports and feature requests
 
 ## License
 

@@ -240,7 +240,8 @@ def _resolve_search_item_entity(
       5. Run the result through `_deep_resolve` so any nested `*key` refs
          get expanded too.
     """
-    actual_item = raw_item.get("item") if isinstance(raw_item.get("item"), dict) else raw_item
+    _item = raw_item.get("item")
+    actual_item: dict[str, Any] = _item if isinstance(_item, dict) else raw_item
 
     entity_ref = actual_item.get("*entityResult") or actual_item.get("entityResult")
     entity: Any = None

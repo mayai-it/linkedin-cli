@@ -232,3 +232,18 @@ linkedin --json connections list --limit 20
   to first/last 4 chars; don't try to recover them.
 - Full message bodies of the user's PMs without explicit permission —
   treat private DMs like private email.
+
+## MCP server (alternative to the CLI)
+
+If the host exposes linkedin-cli as an MCP server (`linkedin-mcp`), prefer the
+native tools over shelling out — same data, no subprocess or NDJSON parsing.
+Tool names mirror the CLI: `linkedin_profile_get`, `linkedin_search_people`,
+`linkedin_search_companies`, `linkedin_connections_list`,
+`linkedin_connections_pending`, `linkedin_messages_list`,
+`linkedin_auth_status`, plus the gated write tools `linkedin_connections_send`
+and `linkedin_messages_send`.
+
+The two write tools will NOT act unless you pass `confirm=True`, and they accept
+`dry_run=True` to preview. Get the user's explicit go-ahead before setting
+`confirm=True` — do not connect or message anyone autonomously. The server
+refuses to start until `linkedin auth login` has been run.

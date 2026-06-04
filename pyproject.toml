@@ -4,8 +4,8 @@ build-backend = "hatchling.build"
 
 [project]
 name = "mayai-linkedin-cli"
-version = "0.1.0"
-description = "CLI for LinkedIn (internal Voyager API) — built for AI agents and developers"
+version = "0.2.0"
+description = "CLI + MCP server for LinkedIn (internal Voyager API) — built for AI agents and developers"
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
@@ -14,11 +14,14 @@ maintainers = [{ name = "MayAI", email = "info@mayai.it" }]
 keywords = [
     "linkedin",
     "cli",
+    "command-line",
     "ai-agents",
+    "llm",
+    "mcp",
     "voyager",
     "automation",
-    "scraping",
     "playwright",
+    "italy",
 ]
 classifiers = [
     "Development Status :: 3 - Alpha",
@@ -26,6 +29,8 @@ classifiers = [
     "Intended Audience :: Developers",
     "Intended Audience :: Information Technology",
     "License :: OSI Approved :: MIT License",
+    "Natural Language :: English",
+    "Natural Language :: Italian",
     "Operating System :: MacOS",
     "Operating System :: POSIX :: Linux",
     "Operating System :: Microsoft :: Windows",
@@ -33,6 +38,7 @@ classifiers = [
     "Programming Language :: Python :: 3.11",
     "Programming Language :: Python :: 3.12",
     "Programming Language :: Python :: 3.13",
+    "Programming Language :: Python :: 3 :: Only",
     "Topic :: Internet",
     "Topic :: Software Development :: Libraries :: Python Modules",
     "Topic :: Utilities",
@@ -42,28 +48,47 @@ dependencies = [
     "click>=8.1.0",
     "cryptography>=42.0.0",
     "httpx>=0.27.0",
+    "mcp>=1.2.0",
     "playwright>=1.40.0",
+    # mcp pulls starlette transitively (>=0.27). starlette<1.0.1 has
+    # PYSEC-2026-161 — pin direct so the resolver picks a non-vulnerable version.
+    "starlette>=1.0.1",
 ]
 
 [project.optional-dependencies]
 dev = [
     "build>=1.2.0",
+    "mypy>=1.8.0",
     "pytest>=8.0.0",
+    "pytest-cov>=5.0.0",
     "ruff>=0.5.0",
     "twine>=5.0.0",
 ]
 
 [project.scripts]
 linkedin = "linkedin_cli.main:cli"
+linkedin-mcp = "linkedin_cli.mcp_server:main"
 
 [project.urls]
 Homepage = "https://mayai.it"
+Documentation = "https://github.com/mayai-it/linkedin-cli#readme"
 Repository = "https://github.com/mayai-it/linkedin-cli"
 Issues = "https://github.com/mayai-it/linkedin-cli/issues"
 Changelog = "https://github.com/mayai-it/linkedin-cli/releases"
 
 [tool.hatch.build.targets.wheel]
 packages = ["linkedin_cli"]
+
+[tool.hatch.build.targets.sdist]
+include = [
+    "linkedin_cli",
+    "tests",
+    "README.md",
+    "README.it.md",
+    "LICENSE",
+    "pyproject.toml",
+    "Makefile",
+]
 
 [tool.ruff]
 line-length = 100
@@ -74,3 +99,44 @@ select = ["E", "F", "I", "N", "W", "UP"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+
+[tool.mypy]
+python_version = "3.11"
+warn_unused_configs = true
+warn_redundant_casts = true
+warn_unused_ignores = true
+
+# Pragmatic baseline. The API layer is a reverse-engineered parser over
+# LinkedIn's normalized JSON — it traffics in `dict[str, Any]` by nature, so a
+# fully strict config would be noise. We enforce a sane floor here and tighten
+# over time (see CONTRIBUTING.md). What we DO enforce:
+check_untyped_defs = true
+no_implicit_optional = true
+strict_equality = true
+extra_checks = true
+
+# click decorators (@click.command/@click.option) aren't fully typed upstream,
+# and the Voyager parser leans on Any-typed generics — requiring either here
+# would drown out real findings.
+disallow_untyped_decorators = false
+disallow_any_generics = false
+
+# Third-party libraries without bundled stubs.
+[[tool.mypy.overrides]]
+module = ["mcp.*", "playwright.*"]
+ignore_missing_imports = true
+
+[tool.coverage.run]
+source = ["linkedin_cli"]
+branch = true
+omit = ["*/tests/*", "*/__init__.py"]
+
+[tool.coverage.report]
+precision = 1
+show_missing = true
+exclude_lines = [
+    "pragma: no cover",
+    "raise NotImplementedError",
+    "if TYPE_CHECKING:",
+    "if __name__ == .__main__.:",
+]

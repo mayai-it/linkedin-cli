@@ -1,0 +1,27 @@
+{
+ "data": {
+  "elements": [
+   {
+    "targetUrn": "urn:li:fs_geo:100000001",
+    "text": {
+     "text": "Milano, Lombardia, Italia"
+    },
+    "type": "GEO",
+    "$type": "com.linkedin.voyager.typeahead.TypeaheadHitV2"
+   },
+   {
+    "targetUrn": "urn:li:fs_geo:100000002",
+    "text": {
+     "text": "Città metropolitana di Milano, Lombardia, Italia"
+    },
+    "type": "GEO",
+    "$type": "com.linkedin.voyager.typeahead.TypeaheadHitV2"
+   }
+  ],
+  "paging": {
+   "count": 2,
+   "start": 0
+  }
+ },
+ "included": []
+}

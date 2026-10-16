@@ -11,11 +11,32 @@ from __future__ import annotations
 import json
 import os
 import stat
-from dataclasses import dataclass
+from collections.abc import Iterable
+from dataclasses import dataclass, field
 from datetime import date
 from pathlib import Path
 
 QUOTAS_PATH = Path.home() / ".config" / "mayai-cli" / "linkedin" / "quotas.json"
+
+# Job search is the most "scrape-like" thing the CLI does, so it gets its own,
+# much tighter budget on top of `api_total`. 30 is a hard ceiling: the env var
+# below can only lower it, never raise it.
+JOBS_DAILY_MAX = 30
+JOBS_LIMIT_ENV = "LINKEDIN_JOBS_DAILY_LIMIT"
+
+KINDS = ("connections", "messages", "api_total", "jobs")
+
+
+def jobs_daily_limit() -> int:
+    """Return the effective jobs quota: `LINKEDIN_JOBS_DAILY_LIMIT`, clamped to 0..30."""
+    raw = os.environ.get(JOBS_LIMIT_ENV, "").strip()
+    if not raw:
+        return JOBS_DAILY_MAX
+    try:
+        value = int(raw)
+    except ValueError:
+        return JOBS_DAILY_MAX
+    return max(0, min(value, JOBS_DAILY_MAX))
 
 
 class QuotaExceededError(RuntimeError):
@@ -34,6 +55,7 @@ class QuotaLimits:
     connections: int = 15
     messages: int = 25
     api_total: int = 200
+    jobs: int = field(default_factory=jobs_daily_limit)
 
 
 DEFAULT_LIMITS = QuotaLimits()
@@ -51,19 +73,25 @@ def _resolve_path(path: Path | None) -> Path:
     return _self.QUOTAS_PATH
 
 
+def _fresh() -> dict[str, int | str]:
+    state: dict[str, int | str] = {"date": _today()}
+    for kind in KINDS:
+        state[kind] = 0
+    return state
+
+
 def _load(path: Path | None = None) -> dict[str, int | str]:
     path = _resolve_path(path)
     if not path.exists():
-        return {"date": _today(), "connections": 0, "messages": 0, "api_total": 0}
+        return _fresh()
     try:
         data = json.loads(path.read_text(encoding="utf-8"))
     except (json.JSONDecodeError, OSError):
-        return {"date": _today(), "connections": 0, "messages": 0, "api_total": 0}
-    if data.get("date") != _today():
-        return {"date": _today(), "connections": 0, "messages": 0, "api_total": 0}
-    data.setdefault("connections", 0)
-    data.setdefault("messages", 0)
-    data.setdefault("api_total", 0)
+        return _fresh()
+    if not isinstance(data, dict) or data.get("date") != _today():
+        return _fresh()
+    for kind in KINDS:
+        data.setdefault(kind, 0)
     return data
 
 
@@ -87,16 +115,32 @@ def check_and_increment(
     """Atomically check the quota for `kind` and increment if there's room.
 
     Raises QuotaExceededError if the limit has been hit. `kind` must be one
-    of "connections", "messages", or "api_total".
+    of "connections", "messages", "api_total" or "jobs".
     """
-    limit = getattr(limits, kind, None)
-    if limit is None:
-        raise ValueError(f"unknown quota kind: {kind!r}")
+    return check_and_increment_many((kind,), limits, path)
+
+
+def check_and_increment_many(
+    kinds: Iterable[str],
+    limits: QuotaLimits = DEFAULT_LIMITS,
+    path: Path | None = None,
+) -> dict[str, int | str]:
+    """Check several quotas at once and increment them all, or none.
+
+    A job search counts against both `jobs` and `api_total`: if either is
+    exhausted nothing is consumed, so a refused call never burns budget.
+    """
+    kinds = tuple(dict.fromkeys(kinds))
     state = _load(path)
-    used = int(state.get(kind, 0) or 0)
-    if used >= limit:
-        raise QuotaExceededError(kind, used, limit)
-    state[kind] = used + 1
+    for kind in kinds:
+        limit = getattr(limits, kind, None) if kind in KINDS else None
+        if limit is None:
+            raise ValueError(f"unknown quota kind: {kind!r}")
+        used = int(state.get(kind, 0) or 0)
+        if used >= limit:
+            raise QuotaExceededError(kind, used, limit)
+    for kind in kinds:
+        state[kind] = int(state.get(kind, 0) or 0) + 1
     _save(state, path)
     return state
 
@@ -107,19 +151,22 @@ def snapshot(
 ) -> dict[str, dict[str, int] | str]:
     """Return current usage vs limits for inspection."""
     state = _load(path)
-    return {
-        "date": str(state.get("date", _today())),
-        "connections": {"used": int(state.get("connections", 0) or 0), "limit": limits.connections},
-        "messages": {"used": int(state.get("messages", 0) or 0), "limit": limits.messages},
-        "api_total": {"used": int(state.get("api_total", 0) or 0), "limit": limits.api_total},
-    }
+    out: dict[str, dict[str, int] | str] = {"date": str(state.get("date", _today()))}
+    for kind in KINDS:
+        out[kind] = {"used": int(state.get(kind, 0) or 0), "limit": getattr(limits, kind)}
+    return out
 
 
 __all__ = [
     "DEFAULT_LIMITS",
+    "JOBS_DAILY_MAX",
+    "JOBS_LIMIT_ENV",
+    "KINDS",
     "QUOTAS_PATH",
     "QuotaExceededError",
     "QuotaLimits",
     "check_and_increment",
+    "check_and_increment_many",
+    "jobs_daily_limit",
     "snapshot",
 ]

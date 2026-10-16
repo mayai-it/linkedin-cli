@@ -23,7 +23,7 @@ from linkedin_cli.api.endpoints import (
     SEARCH_PEOPLE_QUERY_ID_FALLBACKS,
     SEARCH_PEOPLE_RESULTS_PAGE,
 )
-from linkedin_cli.api.quotas import QuotaExceededError, check_and_increment
+from linkedin_cli.api.quotas import QuotaExceededError, QuotaLimits, check_and_increment_many
 from linkedin_cli.auth import Credentials
 
 USER_AGENT = (
@@ -38,6 +38,39 @@ class LinkedInAPIError(RuntimeError):
         super().__init__(message)
         self.status = status
         self.body = body
+
+
+class LinkedInBlockedError(LinkedInAPIError):
+    """LinkedIn pushed back: security checkpoint, captcha, HTTP 429 or HTTP 999.
+
+    This is never retried. The only fix is a human opening linkedin.com in a
+    browser, completing whatever verification it asks for, and then running
+    `linkedin auth login` again. CLI exit code: 3.
+
+    `reason` is one of "checkpoint", "captcha", "rate_limited", "denied".
+    """
+
+    def __init__(
+        self, reason: str, message: str, status: int | None = None, body: str = ""
+    ) -> None:
+        super().__init__(message, status=status, body=body)
+        self.reason = reason
+
+
+class LinkedInQuotaError(LinkedInAPIError):
+    """A local daily quota is exhausted; nothing was sent. CLI exit code: 4."""
+
+    def __init__(self, exc: QuotaExceededError) -> None:
+        super().__init__(str(exc))
+        self.kind = exc.kind
+        self.used = exc.used
+        self.limit = exc.limit
+
+
+# Redirect targets that mean "a human must look at this" rather than a plain
+# expired session. LinkedIn sends these as 302/303 from Voyager endpoints.
+_CHALLENGE_MARKERS = ("/checkpoint/", "/challenge", "captcha")
+_LOGIN_MARKERS = ("/login", "/uas/", "/authwall", "/signup")
 
 
 def _tracking_id() -> str:
@@ -151,12 +184,17 @@ class LinkedInClient:
         *,
         json_body: Any | None = None,
         extra_headers: dict[str, str] | None = None,
+        quota_kinds: tuple[str, ...] = (),
     ) -> httpx.Response:
-        if self.throttle:
+        # `quota_kinds` are extra quotas this request counts against. They are
+        # enforced even with --no-throttle (the jobs quota is a hard ceiling);
+        # `api_total` follows the throttle flag as it always has.
+        kinds = (("api_total",) if self.throttle else ()) + tuple(quota_kinds)
+        if kinds:
             try:
-                check_and_increment("api_total")
+                check_and_increment_many(kinds, QuotaLimits())
             except QuotaExceededError as exc:
-                raise LinkedInAPIError(str(exc)) from exc
+                raise LinkedInQuotaError(exc) from exc
         self._throttle()
         headers = dict(extra_headers or {})
         started = time.monotonic()
@@ -171,16 +209,11 @@ class LinkedInClient:
             preview = response.text[:5000].replace("\n", " ")
             self._log(f"body[0:5000]: {preview}")
 
+        _raise_if_blocked(response)
         if response.status_code == 401:
             raise LinkedInAPIError(
                 "session expired or invalid — run `linkedin auth login` again",
                 status=401,
-                body=response.text[:500],
-            )
-        if response.status_code == 429:
-            raise LinkedInAPIError(
-                "rate limited by LinkedIn — wait a few minutes and try again",
-                status=429,
                 body=response.text[:500],
             )
         if response.status_code >= 400:
@@ -191,8 +224,15 @@ class LinkedInClient:
             )
         return response
 
-    def get_json(self, url: str, extra_headers: dict[str, str] | None = None) -> dict[str, Any]:
-        resp = self._request("GET", url, extra_headers=extra_headers)
+    def get_json(
+        self,
+        url: str,
+        extra_headers: dict[str, str] | None = None,
+        *,
+        quota_kinds: tuple[str, ...] = (),
+    ) -> dict[str, Any]:
+        resp = self._request("GET", url, extra_headers=extra_headers, quota_kinds=quota_kinds)
+        _raise_if_captcha(resp)
         return _safe_json(resp)
 
     def post_json(
@@ -205,6 +245,7 @@ class LinkedInClient:
         if extra_headers:
             headers.update(extra_headers)
         resp = self._request("POST", url, json_body=body, extra_headers=headers)
+        _raise_if_captcha(resp)
         return _safe_json(resp) if resp.content else {}
 
     def get_html(self, url: str) -> str:
@@ -267,6 +308,10 @@ class LinkedInClient:
     def _extract_search_people_query_id(self) -> str | None:
         try:
             html = self.get_html(SEARCH_PEOPLE_RESULTS_PAGE)
+        except (LinkedInBlockedError, LinkedInQuotaError):
+            # A block or an exhausted quota must stop everything, not fall
+            # through to the hardcoded queryIds (more requests after a block).
+            raise
         except LinkedInAPIError as exc:
             self._log(f"queryId scrape failed: {exc}")
             return None
@@ -284,6 +329,63 @@ class LinkedInClient:
 SEARCH_PEOPLE_QUERY_IDS_FALLBACKS_LOCAL = tuple(SEARCH_PEOPLE_QUERY_ID_FALLBACKS)
 
 
+def _raise_if_blocked(response: httpx.Response) -> None:
+    """Map LinkedIn's "stop, human required" signals to LinkedInBlockedError.
+
+    - HTTP 999: LinkedIn's own "request denied" status for suspected bots.
+    - HTTP 429: rate limited.
+    - 3xx to /checkpoint/ or a challenge/captcha page: security verification.
+    - 3xx to a login/authwall page: the session is gone (401-equivalent).
+    """
+    status = response.status_code
+    body = response.text[:500]
+    if status == 999:
+        raise LinkedInBlockedError(
+            "denied",
+            "LinkedIn refused the request (HTTP 999) — stop, open linkedin.com in a "
+            "browser, then run `linkedin auth login` again",
+            status=999,
+            body=body,
+        )
+    if status == 429:
+        raise LinkedInBlockedError(
+            "rate_limited",
+            "rate limited by LinkedIn (HTTP 429) — stop for today, do not retry",
+            status=429,
+            body=body,
+        )
+    if 300 <= status < 400:
+        location = response.headers.get("location", "").lower()
+        if any(m in location for m in _CHALLENGE_MARKERS):
+            raise LinkedInBlockedError(
+                "checkpoint",
+                "LinkedIn security checkpoint — open linkedin.com in a browser, complete "
+                "the verification, then run `linkedin auth login` again",
+                status=status,
+            )
+        if any(m in location for m in _LOGIN_MARKERS):
+            raise LinkedInAPIError(
+                "session expired or invalid — run `linkedin auth login` again",
+                status=401,
+            )
+
+
+def _raise_if_captcha(response: httpx.Response) -> None:
+    """An HTML captcha page where Voyager JSON was expected.
+
+    Only applied to JSON calls: regular LinkedIn HTML pages (used for the
+    queryId scrape) can mention "captcha" in their bundled config.
+    """
+    content_type = response.headers.get("content-type", "").lower()
+    if "html" in content_type and "captcha" in response.text[:20000].lower():
+        raise LinkedInBlockedError(
+            "captcha",
+            "LinkedIn is asking for a captcha — open linkedin.com in a browser, solve it "
+            "there, then run `linkedin auth login` again",
+            status=response.status_code,
+        )
+
+
 def _safe_json(resp: httpx.Response) -> dict[str, Any]:
     try:
         return resp.json()
@@ -295,4 +397,10 @@ def _safe_json(resp: httpx.Response) -> dict[str, Any]:
         ) from exc
 
 
-__all__ = ["LinkedInAPIError", "LinkedInClient", "_tracking_id"]
+__all__ = [
+    "LinkedInAPIError",
+    "LinkedInBlockedError",
+    "LinkedInClient",
+    "LinkedInQuotaError",
+    "_tracking_id",
+]

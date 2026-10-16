@@ -13,6 +13,16 @@
 
     linkedin messages list
     linkedin messages send <profile-id> <text>
+
+    linkedin jobs search [KEYWORDS] [--location NAME | --geo-id ID] [filters…]
+    linkedin jobs get <job-id-or-url>
+    linkedin jobs geo <location-name>
+
+    linkedin quota
+
+Exit codes: 0 ok, 1 application error, 2 not authenticated / session expired,
+3 blocked by LinkedIn (checkpoint, captcha, HTTP 429/999: stop, never retry),
+4 local daily quota exhausted.
 """
 
 from __future__ import annotations
@@ -23,14 +33,33 @@ import sys
 import click
 
 from linkedin_cli import __version__
-from linkedin_cli.api import LinkedInAPIError, LinkedInClient
+from linkedin_cli.api import (
+    LinkedInAPIError,
+    LinkedInBlockedError,
+    LinkedInClient,
+    LinkedInQuotaError,
+)
 from linkedin_cli.api.connections import (
     list_connections,
     list_pending_invitations,
     send_invitation,
 )
+from linkedin_cli.api.jobs import (
+    DATE_POSTED,
+    EXPERIENCE_LEVELS,
+    JOB_TYPES,
+    MAX_LIMIT,
+    SORT_BY,
+    WORKPLACE_TYPES,
+    JobsInputError,
+    get_job,
+    pin_geo_id,
+    resolve_geo_id,
+    search_jobs,
+)
 from linkedin_cli.api.messages import list_conversations, send_message
 from linkedin_cli.api.profile import get_profile
+from linkedin_cli.api.quotas import snapshot
 from linkedin_cli.api.search import search_companies, search_people
 from linkedin_cli.auth import (
     Credentials,
@@ -104,16 +133,31 @@ def common_flags(func):
     return wrapper
 
 
+EXIT_ERROR = 1
+EXIT_AUTH = 2
+EXIT_BLOCKED = 3
+EXIT_QUOTA = 4
+
+
 def handle_api_errors(func):
-    """Translate LinkedInAPIError into a clean stderr message + exit code."""
+    """Translate API errors into a clean stderr message + exit code."""
 
     @functools.wraps(func)
     def wrapper(*args, **kwargs):
         try:
             return func(*args, **kwargs)
+        except LinkedInBlockedError as exc:
+            error(f"blocked ({exc.reason}): {exc}")
+            sys.exit(EXIT_BLOCKED)
+        except LinkedInQuotaError as exc:
+            error(str(exc))
+            sys.exit(EXIT_QUOTA)
         except LinkedInAPIError as exc:
             error(str(exc))
-            sys.exit(2 if exc.status in (401, 403) else 1)
+            sys.exit(EXIT_AUTH if exc.status in (401, 403) else EXIT_ERROR)
+        except JobsInputError as exc:
+            error(str(exc))
+            sys.exit(EXIT_ERROR)
 
     return wrapper
 
@@ -349,6 +393,108 @@ def messages_send_cmd(ctx: CLIContext, recipient: str, text: str, dry_run: bool)
     with ctx.client() as client:
         result = send_message(client, recipient, text)
     emit(result, as_json=ctx.as_json)
+
+
+# ---------------------------------------------------------------------------
+# jobs
+# ---------------------------------------------------------------------------
+
+
+@cli.group(help="Search job postings (read-only; capped by the daily `jobs` quota).")
+def jobs() -> None: ...
+
+
+@jobs.command("search", help="Search job postings. Every page of results is one call.")
+@click.argument("keywords", required=False, default="")
+@click.option("--location", help="Location name, resolved to a geoId (cached after first use).")
+@click.option("--geo-id", help="LinkedIn geoId; skips the location lookup.")
+@click.option("--experience", "experience", multiple=True,
+              type=click.Choice(list(EXPERIENCE_LEVELS)), help="Experience level (repeatable).")
+@click.option("--job-type", "job_types", multiple=True,
+              type=click.Choice(list(JOB_TYPES)), help="Job type (repeatable).")
+@click.option("--date-posted", type=click.Choice(list(DATE_POSTED)), default="any",
+              show_default=True, help="Only postings listed within this window.")
+@click.option("--workplace", multiple=True, type=click.Choice(list(WORKPLACE_TYPES)),
+              help="Workplace type (repeatable).")
+@click.option("--remote", is_flag=True, help="Shortcut for --workplace remote.")
+@click.option("--sort", type=click.Choice(list(SORT_BY)), default="relevant",
+              show_default=True, help="Result order.")
+@click.option("--limit", type=click.IntRange(1, MAX_LIMIT), default=25, show_default=True,
+              help="Max postings to return (25 per call).")
+@click.option("--start", type=click.IntRange(0), default=0, show_default=True,
+              help="Offset into the result list, for pagination.")
+@common_flags
+@pass_ctx
+@handle_api_errors
+def jobs_search_cmd(
+    ctx: CLIContext,
+    keywords: str,
+    location: str | None,
+    geo_id: str | None,
+    experience: tuple[str, ...],
+    job_types: tuple[str, ...],
+    date_posted: str,
+    workplace: tuple[str, ...],
+    remote: bool,
+    sort: str,
+    limit: int,
+    start: int,
+) -> None:
+    places = tuple(dict.fromkeys(workplace + (("remote",) if remote else ())))
+    with ctx.client() as client:
+        cards = search_jobs(
+            client,
+            keywords,
+            location=location,
+            geo_id=geo_id,
+            experience=experience,
+            job_types=job_types,
+            date_posted=date_posted,
+            workplace=places,
+            sort=sort,
+            limit=limit,
+            start=start,
+        )
+    emit([c.to_dict() for c in cards], as_json=ctx.as_json)
+
+
+@jobs.command("get", help="Fetch one posting: description, apply method, open/closed state.")
+@click.argument("job")
+@common_flags
+@pass_ctx
+@handle_api_errors
+def jobs_get_cmd(ctx: CLIContext, job: str) -> None:
+    with ctx.client() as client:
+        detail = get_job(client, job)
+    emit(detail.to_dict(), as_json=ctx.as_json)
+
+
+@jobs.command("geo", help="Resolve a location name to a LinkedIn geoId (cached).")
+@click.argument("name")
+@click.option("--set", "set_id", metavar="GEO_ID",
+              help="Pin NAME to this geoId in the local cache (no network call).")
+@common_flags
+@pass_ctx
+@handle_api_errors
+def jobs_geo_cmd(ctx: CLIContext, name: str, set_id: str | None) -> None:
+    if set_id is not None:
+        emit(pin_geo_id(name, set_id), as_json=ctx.as_json)
+        return
+    with ctx.client() as client:
+        result = resolve_geo_id(client, name)
+    emit(result, as_json=ctx.as_json)
+
+
+# ---------------------------------------------------------------------------
+# quota
+# ---------------------------------------------------------------------------
+
+
+@cli.command("quota", help="Show today's local quota usage (no network call).")
+@common_flags
+@pass_ctx
+def quota_cmd(ctx: CLIContext) -> None:
+    emit(snapshot(), as_json=ctx.as_json)
 
 
 # ---------------------------------------------------------------------------

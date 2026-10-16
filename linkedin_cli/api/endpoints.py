@@ -78,3 +78,30 @@ INVITATIONS_PENDING = (
 )
 
 INVITATIONS_SEND = f"{VOYAGER}/growth/normInvitations"
+
+# --- Jobs --------------------------------------------------------------------
+
+# Job search as the web app's /jobs/search page loads it: one REST call per
+# page of job cards. `q=jobSearch` + a restli `query=(...)` tuple carrying
+# keywords, location and the selected filters. Returns normalized JSON whose
+# `included[]` holds JobPostingCard + JobPosting records.
+JOBS_SEARCH = f"{VOYAGER}/voyagerJobsDashJobCards"
+JOBS_SEARCH_DECORATION = "com.linkedin.voyager.dash.deco.jobs.search.JobSearchCardsCollection-174"
+JOBS_SEARCH_PAGE_SIZE = 25
+
+# Full posting (description, apply method, state) for `linkedin jobs get`.
+JOB_POSTING = f"{VOYAGER}/jobs/jobPostings/{{job_id}}"
+JOB_POSTING_DECORATION = "com.linkedin.voyager.deco.jobs.web.shared.WebFullJobPosting-65"
+
+# Location typeahead (same hitsV2 endpoint as the search bar), restricted to
+# geo entities. Resolves "Milan" → geoId so job searches can filter on it.
+GEO_TYPEAHEAD_QUERY = (
+    "?keywords={keywords}"
+    "&origin=OTHER"
+    "&q=type"
+    "&queryContext=List(geoVersion->3,"
+    "bingGeoSubTypeFilters->MARKET_AREA|COUNTRY_REGION|ADMIN_DIVISION_1|CITY)"
+    "&type=GEO"
+)
+
+JOB_VIEW_URL = f"{BASE}/jobs/view/{{job_id}}/"

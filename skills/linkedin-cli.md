@@ -41,9 +41,11 @@ Trigger on user prompts like:
    by default. Don't issue tight loops; if you need many results,
    prefer one large `--limit` over many small calls.
 5. **Read stderr separately.** Errors go to stderr with the prefix
-   `error:`. Exit codes: `0` ok, `1` application error, `2` auth.
-   Rate-limit errors carry status `429` — surface them to the user
-   verbatim and stop sending more requests for a few minutes.
+   `error:`. Exit codes: `0` ok, `1` application error, `2` auth,
+   `3` blocked by LinkedIn (checkpoint, captcha, HTTP 429/999), `4` local
+   daily quota exhausted. On `3`, stop ALL LinkedIn calls for the day and
+   tell the user to open linkedin.com in a browser, complete the
+   verification, then run `linkedin auth login`. Never retry.
 6. **Never echo credentials.** They live Fernet-encrypted at
    `~/.config/mayai-cli/linkedin/credentials.json` and
    `~/.config/mayai-cli/linkedin/key.bin`. Do not cat or print them.
@@ -182,6 +184,26 @@ Conversation list row shape:
 }
 ```
 
+### Jobs
+```bash
+# Internship + entry-level postings from the last 24h in Italy, newest first
+linkedin --json jobs search "data analyst" --geo-id 103350119 \
+  --experience internship --experience entry --date-posted 24h --sort recent
+
+# One posting's full description and open/closed state
+linkedin --json jobs get 4000000001
+
+# Pin a city's geoId (read it from the browser URL, `geoId=`) — no network
+linkedin jobs geo "Amsterdam" --set <geoId>
+
+# How much of today's budget is left (offline)
+linkedin --json quota
+```
+
+Every jobs call (one per 25 results, each `jobs get`, each uncached geo
+lookup) counts against a **30/day `jobs` quota**. Plan searches; don't
+page through everything.
+
 ## Common workflows
 
 ### "Find Mario Rossi's profile and connect with him"
@@ -216,8 +238,9 @@ linkedin --json connections list --limit 20
   → exit code 2. Tell the user; do not retry.
 - `error: session expired or invalid — run \`linkedin auth login\` again`
   → exit code 2. Cookies expired; same response.
-- `error: rate limited by LinkedIn — wait a few minutes and try again`
-  → exit code 1, status 429. Stop and wait. Do not retry in a loop.
+- `error: blocked (<reason>): …` → exit code 3 (checkpoint, captcha,
+  HTTP 429 or 999). Stop all LinkedIn calls. Do not retry, ever.
+- `error: daily quota exceeded for jobs: 30/30 …` → exit code 4. Tomorrow.
 - `error: HTTP 500 on GET https://www.linkedin.com/voyager/api/graphql…`
   → likely a stale queryId for search. Re-running `linkedin auth login`
   refreshes cookies and lets the next call scrape a fresh queryId.
@@ -240,7 +263,8 @@ native tools over shelling out — same data, no subprocess or NDJSON parsing.
 Tool names mirror the CLI: `linkedin_profile_get`, `linkedin_search_people`,
 `linkedin_search_companies`, `linkedin_connections_list`,
 `linkedin_connections_pending`, `linkedin_messages_list`,
-`linkedin_auth_status`, plus the gated write tools `linkedin_connections_send`
+`linkedin_auth_status`, the read-only `linkedin_jobs_search` and `linkedin_jobs_get`,
+plus the gated write tools `linkedin_connections_send`
 and `linkedin_messages_send`.
 
 The two write tools will NOT act unless you pass `confirm=True`, and they accept

@@ -30,7 +30,21 @@ linkedin auth login   # refresh cookies → next call scrapes a live queryId
 If it still 500s, LinkedIn may have changed the response shape — run with
 `--verbose` and open an issue with the (redacted) body preview.
 
-## I get `error: rate limited by LinkedIn` (HTTP 429)
+## I get `error: blocked (…)` and exit code 3
+
+LinkedIn answered with a security checkpoint, a captcha, HTTP 429 or HTTP 999.
+The CLI never retries any of these. Open linkedin.com in your normal browser,
+complete whatever verification it shows, then run `linkedin auth login` to
+capture fresh cookies. Leave automation off for the rest of the day.
+
+## `jobs search --location X` fails, or how do I find a geoId?
+
+The GEO typeahead behind `--location` is the least stable endpoint. Search jobs
+for the place on linkedin.com in your browser and copy the `geoId=` number from
+the address bar, then `linkedin jobs geo "X" --set <geoId>` (offline) or pass
+`--geo-id <geoId>` directly. Italy is `103350119`.
+
+## I get `error: blocked (rate_limited)` (HTTP 429)
 
 Stop. Wait several minutes — ideally longer — before trying again. Do **not**
 retry in a loop: LinkedIn extends the penalty the more you hit it while limited.
@@ -47,6 +61,7 @@ midnight. Defaults:
 | `connections` | 15/day | A successful `connections send` POST. |
 | `messages` | 25/day | Each `messages send`. |
 | `api_total` | 200/day | Every Voyager request. |
+| `jobs` | 30/day | Every `jobs search` page, `jobs get`, and geo lookups that miss the cache. |
 
 `--no-throttle` disables **both** the inter-request delay and these quota checks.
 It's the single fastest way to get an account flagged — only use it if you fully

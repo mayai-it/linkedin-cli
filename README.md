@@ -30,7 +30,7 @@ Part of [MayAI CLI](https://mayai.it).
 
 - **Cross-platform CI**: Ubuntu / macOS / Windows × Python 3.11 / 3.12 / 3.13,
   plus a `pip-audit` job — via GitHub Actions.
-- **`ruff` + blocking `mypy`** on every push; **72 tests** run fully offline
+- **`ruff` + blocking `mypy`** on every push; **134 tests** run fully offline
   against mocks (no live LinkedIn traffic, no browser launch).
 - **Two surfaces, one core**: the `linkedin` CLI and the `linkedin-mcp` server
   share the same Voyager client, throttle, and daily-quota safety net.
@@ -113,6 +113,8 @@ Find your path with `which linkedin-mcp`.
 | `linkedin_connections_list` | List first-degree connections, newest first |
 | `linkedin_connections_pending` | List incoming invitations |
 | `linkedin_messages_list` | List latest conversations |
+| `linkedin_jobs_search` | Search job postings (keywords, location/geoId, experience, job type, date posted, workplace, paging) — read-only, counts against the `jobs` quota |
+| `linkedin_jobs_get` | One posting's description, apply method and open/closed state — read-only, `jobs` quota |
 | `linkedin_connections_send` | Send a connection request (requires `confirm=True`) |
 | `linkedin_messages_send` | Send a 1:1 message (requires `confirm=True`) |
 | `linkedin_auth_status` | Check authentication status |
@@ -150,6 +152,16 @@ linkedin --json messages list
 
 # 8. Send a 1:1 message (member id from `profile get`)
 linkedin messages send 12345678 "Ciao Mario, parliamo?"
+
+# 9. Internship / entry-level jobs posted in the last week, newest first
+linkedin --json jobs search "data scientist" --geo-id 103350119 \
+  --experience internship --experience entry --date-posted week --sort recent
+
+# 10. Full description + open/closed state of one posting
+linkedin --json jobs get https://www.linkedin.com/jobs/view/4000000001/
+
+# 11. Today's quota usage (local file, no network)
+linkedin --json quota
 ```
 
 ## Command reference
@@ -167,6 +179,10 @@ linkedin messages send 12345678 "Ciao Mario, parliamo?"
 | `linkedin connections send <profile-id> [--dry-run]` | Send a connection request. `<profile-id>` accepts a public id (resolved to a URN via an extra `profile get` call) or an `urn:li:fsd_profile:…` / `urn:li:member:…` URN. Increments the daily connections quota only on a successful POST. |
 | `linkedin messages list` | Latest conversations from the inbox. |
 | `linkedin messages send <recipient> <text> [--dry-run]` | Send a 1:1 message. `recipient` is a numeric member id or `urn:li:member:N`. |
+| `linkedin jobs search [KEYWORDS] [options]` | Job search. Options: `--location NAME` or `--geo-id ID`; `--experience internship\|entry\|associate\|mid-senior\|director\|executive` (repeatable); `--job-type full-time\|part-time\|contract\|temporary\|internship\|volunteer\|other` (repeatable); `--date-posted 24h\|week\|month\|any`; `--workplace onsite\|remote\|hybrid` (repeatable) or `--remote`; `--sort relevant\|recent`; `--limit N` (1–100, 25 per call) and `--start N` for paging. |
+| `linkedin jobs get <job-id-or-url>` | One posting: description, employment type, experience level, workplace, listed/expiry/closed dates, `closed` flag, Easy Apply vs off-site `apply_url`. |
+| `linkedin jobs geo <name> [--set GEO_ID]` | Resolve a location name to a geoId via the GEO typeahead (cached on disk), or pin one yourself with `--set` (no network). |
+| `linkedin quota` | Today's local quota usage per kind. No network call. |
 
 ### Global flags
 
@@ -184,8 +200,10 @@ These work in any position (before or after the subcommand):
 | Code | Meaning |
 |---|---|
 | `0` | Success |
-| `1` | Application error (network, rate limit, search 500, bad arguments) |
+| `1` | Application error (network, search 500, bad arguments) |
 | `2` | Not authenticated, or session expired — run `linkedin auth login` |
+| `3` | **Blocked by LinkedIn**: security checkpoint / challenge redirect, captcha page, HTTP 429 or HTTP 999. The CLI never retries. Stop, open linkedin.com in a browser, complete the verification, then `linkedin auth login`. The stderr line starts with `error: blocked (<reason>):`, reason one of `checkpoint`, `captcha`, `rate_limited`, `denied`. |
+| `4` | A local daily quota is exhausted (nothing was sent). Try again tomorrow. |
 
 ### Safety note on write actions
 
@@ -377,6 +395,12 @@ clear error.
 | `connections` | 15 per day | A successful `linkedin connections send` POST. |
 | `messages` | 25 per day | Any `linkedin messages send` call (incremented before the POST so we never double-send). |
 | `api_total` | 200 per day | Every HTTP request to Voyager — search, profile lookups, listings, sends. |
+| `jobs` | 30 per day | Every request made by `jobs search` (one per page of 25), `jobs get`, and a geo lookup that misses the cache. These also count against `api_total`. |
+
+The `jobs` limit can be **lowered** with `LINKEDIN_JOBS_DAILY_LIMIT=N`
+(values above 30 are clamped to 30), and unlike the other quotas it stays
+enforced under `--no-throttle`. A call is only counted if every quota it
+touches still has room, so a refused call never burns budget.
 
 **`--no-throttle`.** Disables both the jitter and the quota checks. The
 flag exists for power users who know exactly what they're doing (e.g.
@@ -384,14 +408,47 @@ running a one-shot script under a tight time budget). It is the single
 fastest way to get an account flagged — only use it if you accept the
 risk and ideally on a non-primary account.
 
-If you ever do see HTTP 429 from LinkedIn:
+If you ever do see HTTP 429 (or 999, or a checkpoint) from LinkedIn:
 
 ```
-error: rate limited by LinkedIn — wait a few minutes and try again
+error: blocked (rate_limited): rate limited by LinkedIn (HTTP 429) — stop for today, do not retry
 ```
 
-…stop and wait. Don't retry in a tight loop; LinkedIn extends the
-penalty the more you hit them.
+…the command exits `3`. Stop and wait. Don't retry in a loop; LinkedIn
+extends the penalty the more you hit them.
+
+### Job search
+
+`linkedin jobs search` makes the same call as the web app's `/jobs/search`
+page (validated against the live endpoint in October 2026):
+
+```
+GET /voyager/api/voyagerJobsDashJobCards
+    ?decorationId=com.linkedin.voyager.dash.deco.jobs.search.JobSearchCardsCollection-174
+    &count=25&q=jobSearch&start=0
+    &query=(origin:JOB_SEARCH_PAGE_JOB_FILTER,keywords:data%20scientist,
+            locationUnion:(geoId:103350119),
+            selectedFilters:(sortBy:List(DD),experience:List(1,2),timePostedRange:List(r604800)),
+            spellCorrectionEnabled:true)
+```
+
+Filter codes: experience `1` internship … `6` executive; job type `F P C T I V O`;
+`timePostedRange` `r86400` / `r604800` / `r2592000`; workplace `1` on-site,
+`2` remote, `3` hybrid; `sortBy` `R` relevance or `DD` most recent. The
+response is normalized JSON: `data.elements[].jobCardUnion.*jobPostingCard`
+points at `JobPostingCard` records in `included[]` (title, company in
+`primaryDescription`, location in `secondaryDescription`, salary in
+`tertiaryDescription`, `footerItems` with `LISTED_DATE` and `EASY_APPLY_TEXT`).
+`jobs get` reads `/voyager/api/jobs/jobPostings/<id>` with the
+`WebFullJobPosting-65` decoration.
+
+Locations need a numeric **geoId** (Italy is `103350119`). `--location NAME`
+resolves one through the GEO typeahead and caches it in
+`~/.config/mayai-cli/linkedin/geo_cache.json`. That typeahead is the least
+stable endpoint here (it returned HTTP 400 in the October 2026 validation),
+so the reliable path is to read the geoId from the browser — search jobs for
+the place on linkedin.com and copy `geoId=` from the address bar — and either
+pass `--geo-id` or pin it once with `linkedin jobs geo "Milan" --set <id>`.
 
 ## Why this was hard
 
@@ -459,6 +516,22 @@ Errors always go to stderr, prefixed with `error:`.
   "headline": "CTO at MayAI",
   "location": "Milan, Italy",
   "profile_url": "https://www.linkedin.com/in/mario-rossi-9558832a"
+}
+```
+
+`linkedin jobs search`:
+
+```json
+{
+  "job_id": "4000000001",
+  "title": "AI Engineer Intern",
+  "company": "Acme Analytics",
+  "location": "Milano, Lombardia, Italia (Ibrido)",
+  "salary": "12K €/anno - 15K €/anno",
+  "listed_at": "2026-10-16T13:32:07Z",
+  "url": "https://www.linkedin.com/jobs/view/4000000001/",
+  "easy_apply": false,
+  "reposted": false
 }
 ```
 

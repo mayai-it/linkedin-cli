@@ -87,3 +87,44 @@ def test_corrupt_quota_file_recovers(tmp_path: Path):
     path.write_text("not json at all", encoding="utf-8")
     state = check_and_increment("messages", DEFAULT_LIMITS, path)
     assert state["messages"] == 1
+
+
+def test_jobs_limit_defaults_to_30_and_env_can_only_lower(monkeypatch):
+    from linkedin_cli.api.quotas import JOBS_LIMIT_ENV, jobs_daily_limit
+
+    monkeypatch.delenv(JOBS_LIMIT_ENV, raising=False)
+    assert jobs_daily_limit() == 30
+    monkeypatch.setenv(JOBS_LIMIT_ENV, "10")
+    assert jobs_daily_limit() == 10
+    assert QuotaLimits().jobs == 10
+    monkeypatch.setenv(JOBS_LIMIT_ENV, "500")
+    assert jobs_daily_limit() == 30
+    monkeypatch.setenv(JOBS_LIMIT_ENV, "-3")
+    assert jobs_daily_limit() == 0
+    monkeypatch.setenv(JOBS_LIMIT_ENV, "lots")
+    assert jobs_daily_limit() == 30
+
+
+def test_check_many_is_all_or_nothing(tmp_path: Path):
+    from linkedin_cli.api.quotas import check_and_increment_many
+
+    path = _path(tmp_path)
+    limits = QuotaLimits(api_total=1, jobs=5)
+    check_and_increment_many(("api_total", "jobs"), limits, path)
+    with pytest.raises(QuotaExceededError) as exc_info:
+        check_and_increment_many(("jobs", "api_total"), limits, path)
+    assert exc_info.value.kind == "api_total"
+    # jobs was not consumed by the refused call
+    assert snapshot(limits, path)["jobs"] == {"used": 1, "limit": 5}
+
+
+def test_old_state_file_without_jobs_key(tmp_path: Path):
+    path = _path(tmp_path)
+    path.write_text(
+        json.dumps({"date": date.today().isoformat(), "connections": 1, "messages": 0,
+                    "api_total": 7}),
+        encoding="utf-8",
+    )
+    snap = snapshot(QuotaLimits(), path)
+    assert snap["jobs"]["used"] == 0  # type: ignore[index]
+    assert snap["api_total"]["used"] == 7  # type: ignore[index]

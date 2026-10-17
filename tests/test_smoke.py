@@ -25,7 +25,7 @@ from linkedin_cli.models.profile import Conversation, Profile, SearchHit
 
 
 def test_version_is_exposed() -> None:
-    assert __version__ == "0.2.0"
+    assert __version__ == "0.3.0"
 
 
 # ---------------------------------------------------------------------------

@@ -48,7 +48,34 @@ linkedin connections send mario-rossi-9558832a
 
 # 6. Ultime conversazioni in arrivo
 linkedin --json messages list
+
+# 7. Stage e posizioni entry level pubblicati nell'ultima settimana in Italia
+linkedin --json jobs search "data scientist" --geo-id 103350119 \
+  --experience internship --experience entry --date-posted week --sort recent
+
+# 8. Descrizione completa e stato (aperta/chiusa) di un annuncio
+linkedin --json jobs get 4000000001
 ```
+
+## Ricerca lavoro
+
+`linkedin jobs search` usa la stessa chiamata della pagina /jobs/search del
+sito. Filtri: `--location` o `--geo-id`, `--experience`, `--job-type`,
+`--date-posted 24h|week|month|any`, `--workplace onsite|remote|hybrid`
+(o `--remote`), `--sort`, `--limit`/`--start`. Ogni pagina da 25 risultati è
+una chiamata e conta sia su `api_total` sia sulla quota dedicata `jobs`,
+**massimo 30 al giorno** (si può solo abbassare con
+`LINKEDIN_JOBS_DAILY_LIMIT`, resta attiva anche con `--no-throttle`).
+Il geoId di una città si legge dalla barra degli indirizzi cercando lavori su
+linkedin.com; fissalo una volta con `linkedin jobs geo "Milano" --set <id>`.
+`linkedin quota` mostra l'uso di oggi senza fare chiamate.
+
+## Exit code
+
+`0` ok · `1` errore applicativo · `2` non autenticato / sessione scaduta ·
+`3` **bloccato da LinkedIn** (checkpoint, captcha, HTTP 429 o 999): mai
+ritentare, apri linkedin.com nel browser, completa la verifica, poi
+`linkedin auth login` · `4` quota giornaliera locale esaurita.
 
 ## Server MCP
 

@@ -1,0 +1,55 @@
+{
+ "data": {
+  "title": "AI Engineer Intern",
+  "jobPostingId": 4000000001,
+  "entityUrn": "urn:li:fs_normalized_jobPosting:4000000001",
+  "dashEntityUrn": "urn:li:fsd_jobPosting:4000000001",
+  "companyDetails": {
+   "company": "urn:li:fs_normalized_company:1000001",
+   "*companyResolutionResult": "urn:li:fs_normalized_company:1000001",
+   "$type": "com.linkedin.voyager.deco.jobs.web.shared.WebJobPostingCompany"
+  },
+  "formattedLocation": "Milano, Lombardia, Italia",
+  "description": {
+   "text": "Acme Analytics is looking for an AI Engineer Intern.\nYou will build RAG prototypes.",
+   "attributes": [],
+   "$type": "com.linkedin.pemberly.text.AttributedText"
+  },
+  "listedAt": 1792157527000,
+  "originalListedAt": 1784630260000,
+  "expireAt": 1797590953000,
+  "closedAt": null,
+  "jobState": "LISTED",
+  "applies": 12,
+  "views": 0,
+  "workRemoteAllowed": false,
+  "formattedEmploymentStatus": "Stage",
+  "formattedExperienceLevel": "Stage",
+  "workplaceTypes": [
+   "urn:li:fs_workplaceType:3"
+  ],
+  "workplaceTypesResolutionResults": {
+   "*urn:li:fs_workplaceType:3": "urn:li:fs_workplaceType:3"
+  },
+  "applyMethod": {
+   "companyApplyUrl": "https://careers.acme-analytics.example/jobs/42",
+   "inPageOffsiteApply": false,
+   "$type": "com.linkedin.voyager.jobs.OffsiteApply"
+  },
+  "jobPostingUrl": "https://www.linkedin.com/jobs/view/4000000001/?trk=fictional",
+  "$type": "com.linkedin.voyager.jobs.JobPosting"
+ },
+ "included": [
+  {
+   "entityUrn": "urn:li:fs_normalized_company:1000001",
+   "universalName": "acme-analytics",
+   "name": "Acme Analytics",
+   "$type": "com.linkedin.voyager.organization.Company"
+  },
+  {
+   "entityUrn": "urn:li:fs_workplaceType:3",
+   "localizedName": "Ibrido",
+   "$type": "com.linkedin.voyager.jobs.shared.WorkplaceType"
+  }
+ ]
+}

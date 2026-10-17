@@ -1,0 +1,188 @@
+{
+ "data": {
+  "metadata": {
+   "$type": "com.linkedin.voyager.dash.jobs.search.JobSearchMetadata"
+  },
+  "entityUrn": "urn:li:fsd_jobSearchCards:fictional",
+  "elements": [
+   {
+    "jobCardUnion": {
+     "*jobPostingCard": "urn:li:fsd_jobPostingCard:(4000000001,JOBS_SEARCH)"
+    },
+    "$type": "com.linkedin.voyager.dash.jobs.JobCard"
+   },
+   {
+    "jobCardUnion": {
+     "*jobPostingCard": "urn:li:fsd_jobPostingCard:(4000000002,JOBS_SEARCH)"
+    },
+    "$type": "com.linkedin.voyager.dash.jobs.JobCard"
+   },
+   {
+    "jobCardUnion": {
+     "*jobPostingCard": "urn:li:fsd_jobPostingCard:(4000000003,JOBS_SEARCH)"
+    },
+    "$type": "com.linkedin.voyager.dash.jobs.JobCard"
+   }
+  ],
+  "paging": {
+   "total": 3,
+   "count": 3,
+   "start": 0,
+   "links": [],
+   "$type": "com.linkedin.restli.common.CollectionMetadata"
+  },
+  "$type": "com.linkedin.restli.common.CollectionResponse"
+ },
+ "included": [
+  {
+   "entityUrn": "urn:li:fsd_geo:103350119",
+   "fullLocalizedName": "Italia",
+   "$type": "com.linkedin.voyager.dash.common.Geo"
+  },
+  {
+   "entityUrn": "urn:li:fsd_jobPostingCard:(4000000001,JOB_DETAILS)",
+   "$type": "com.linkedin.voyager.dash.jobs.JobPostingCard"
+  },
+  {
+   "entityUrn": "urn:li:fsd_jobPostingCard:(4000000002,JOBS_SEARCH)",
+   "preDashNormalizedJobPostingUrn": "urn:li:fs_normalized_jobPosting:4000000002",
+   "jobPostingUrn": "urn:li:fsd_jobPosting:4000000002",
+   "*jobPosting": "urn:li:fsd_jobPosting:4000000002",
+   "jobPostingTitle": "Data Analyst Intern",
+   "title": {
+    "textDirection": "USER_LOCALE",
+    "text": "Data Analyst Intern",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "primaryDescription": {
+    "textDirection": "USER_LOCALE",
+    "text": "Contoso Bank",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "secondaryDescription": {
+    "textDirection": "USER_LOCALE",
+    "text": "Roma, Lazio, Italia (Ibrido)",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "footerItems": [
+    {
+     "type": "LISTED_DATE",
+     "timeAt": 1792150000000,
+     "$type": "com.linkedin.voyager.dash.jobs.JobPostingCardFooterItem"
+    },
+    {
+     "type": "EASY_APPLY_TEXT",
+     "$type": "com.linkedin.voyager.dash.jobs.JobPostingCardFooterItem"
+    }
+   ],
+   "$type": "com.linkedin.voyager.dash.jobs.JobPostingCard"
+  },
+  {
+   "entityUrn": "urn:li:fsd_jobPostingCard:(4000000001,JOBS_SEARCH)",
+   "preDashNormalizedJobPostingUrn": "urn:li:fs_normalized_jobPosting:4000000001",
+   "jobPostingUrn": "urn:li:fsd_jobPosting:4000000001",
+   "*jobPosting": "urn:li:fsd_jobPosting:4000000001",
+   "jobPostingTitle": "AI Engineer Intern",
+   "title": {
+    "textDirection": "USER_LOCALE",
+    "text": "AI Engineer Intern  ",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "primaryDescription": {
+    "textDirection": "USER_LOCALE",
+    "text": "Acme Analytics",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "secondaryDescription": {
+    "textDirection": "USER_LOCALE",
+    "text": "Milano, Lombardia, Italia (Ibrido)",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "footerItems": [
+    {
+     "type": "LISTED_DATE",
+     "timeAt": 1792157527000,
+     "$type": "com.linkedin.voyager.dash.jobs.JobPostingCardFooterItem"
+    }
+   ],
+   "$type": "com.linkedin.voyager.dash.jobs.JobPostingCard",
+   "tertiaryDescription": {
+    "textDirection": "USER_LOCALE",
+    "text": "12K €/anno - 15K €/anno",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   }
+  },
+  {
+   "entityUrn": "urn:li:fsd_jobPostingCard:(4000000003,JOBS_SEARCH)",
+   "preDashNormalizedJobPostingUrn": "urn:li:fs_normalized_jobPosting:4000000003",
+   "jobPostingUrn": "urn:li:fsd_jobPosting:4000000003",
+   "*jobPosting": "urn:li:fsd_jobPosting:4000000003",
+   "jobPostingTitle": "Junior Data Scientist",
+   "title": {
+    "textDirection": "USER_LOCALE",
+    "text": "Junior Data Scientist",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "primaryDescription": {
+    "textDirection": "USER_LOCALE",
+    "text": "Fabrikam Ventures",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "secondaryDescription": {
+    "textDirection": "USER_LOCALE",
+    "text": "Europa, Medio Oriente e Africa (Da remoto)",
+    "attributesV2": [],
+    "$type": "com.linkedin.voyager.dash.common.text.TextViewModel"
+   },
+   "footerItems": [
+    {
+     "type": "LISTED_DATE",
+     "timeAt": 1792000000000,
+     "$type": "com.linkedin.voyager.dash.jobs.JobPostingCardFooterItem"
+    }
+   ],
+   "$type": "com.linkedin.voyager.dash.jobs.JobPostingCard"
+  },
+  {
+   "trackingUrn": "urn:li:jobPosting:4000000001",
+   "repostedJob": false,
+   "title": "AI Engineer Intern",
+   "posterId": null,
+   "contentSource": "JOBS_PREMIUM_OFFLINE",
+   "entityUrn": "urn:li:fsd_jobPosting:4000000001",
+   "$type": "com.linkedin.voyager.dash.jobs.JobPosting"
+  },
+  {
+   "trackingUrn": "urn:li:jobPosting:4000000002",
+   "repostedJob": true,
+   "title": "Data Analyst Intern",
+   "posterId": null,
+   "contentSource": "JOBS_PREMIUM_OFFLINE",
+   "entityUrn": "urn:li:fsd_jobPosting:4000000002",
+   "$type": "com.linkedin.voyager.dash.jobs.JobPosting"
+  },
+  {
+   "trackingUrn": "urn:li:jobPosting:4000000003",
+   "repostedJob": false,
+   "title": "Junior Data Scientist",
+   "posterId": null,
+   "contentSource": "JOBS_PREMIUM_OFFLINE",
+   "entityUrn": "urn:li:fsd_jobPosting:4000000003",
+   "$type": "com.linkedin.voyager.dash.jobs.JobPosting"
+  },
+  {
+   "entityUrn": "urn:li:fsd_company:1000001",
+   "name": "Acme Analytics",
+   "$type": "com.linkedin.voyager.dash.organization.Company"
+  }
+ ]
+}

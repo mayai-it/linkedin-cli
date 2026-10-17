@@ -258,3 +258,73 @@ def test_write_tools_raise_when_unauthenticated(monkeypatch) -> None:
         linkedin_connections_send(ctx, profile_id="johndoe", confirm=True)
     with pytest.raises(ToolError, match="not authenticated"):
         linkedin_messages_send(ctx, recipient="12345678", text="ciao", confirm=True)
+
+
+# ---------------------------------------------------------------------------
+# Jobs tools (read-only)
+# ---------------------------------------------------------------------------
+
+
+def test_jobs_search_passes_filters_and_returns_rows(monkeypatch) -> None:
+    from linkedin_cli.models.job import JobCard
+
+    captured: dict[str, Any] = {}
+
+    def _fake(client, keywords, **kwargs):
+        captured.update(keywords=keywords, **kwargs)
+        return [JobCard(job_id="4000000001", title="AI Intern",
+                        url="https://www.linkedin.com/jobs/view/4000000001/")]
+
+    monkeypatch.setattr(mcp_server, "search_jobs", _fake)
+    out = mcp_server.linkedin_jobs_search(
+        _ctx(), keywords="ai", geo_id="103350119", experience=["internship"], limit=5
+    )
+    assert out == [{"job_id": "4000000001", "title": "AI Intern",
+                    "url": "https://www.linkedin.com/jobs/view/4000000001/"}]
+    assert captured["keywords"] == "ai"
+    assert captured["experience"] == ["internship"]
+    assert captured["date_posted"] == "week"
+    assert captured["sort"] == "recent"
+    assert captured["limit"] == 5
+
+
+def test_jobs_get_returns_dict(monkeypatch) -> None:
+    from linkedin_cli.models.job import JobDetail
+
+    monkeypatch.setattr(
+        mcp_server, "get_job", lambda client, job: JobDetail(job_id="1", title="T", closed=False)
+    )
+    assert mcp_server.linkedin_jobs_get(_ctx(), job="1") == {
+        "job_id": "1", "title": "T", "closed": False
+    }
+
+
+def test_jobs_tools_map_block_to_do_not_retry(monkeypatch) -> None:
+    from linkedin_cli.api import LinkedInBlockedError
+
+    def _blocked(client, *a, **k):
+        raise LinkedInBlockedError("checkpoint", "LinkedIn security checkpoint", status=302)
+
+    monkeypatch.setattr(mcp_server, "search_jobs", _blocked)
+    monkeypatch.setattr(mcp_server, "get_job", _blocked)
+    with pytest.raises(ToolError, match="do NOT retry"):
+        mcp_server.linkedin_jobs_search(_ctx(), keywords="x")
+    with pytest.raises(ToolError, match="checkpoint"):
+        mcp_server.linkedin_jobs_get(_ctx(), job="1")
+
+
+def test_jobs_tools_bad_input_is_tool_error() -> None:
+    with pytest.raises(ToolError, match="not a LinkedIn job id"):
+        mcp_server.linkedin_jobs_get(_ctx(client=object()), job="nope")
+
+
+def test_jobs_tools_raise_when_unauthenticated() -> None:
+    with pytest.raises(ToolError, match="not authenticated"):
+        mcp_server.linkedin_jobs_search(_ctx(client=None, creds=None), keywords="x")
+
+
+def test_jobs_tools_are_registered() -> None:
+    import asyncio
+
+    names = {t.name for t in asyncio.run(mcp_server.mcp.list_tools())}
+    assert {"linkedin_jobs_search", "linkedin_jobs_get"} <= names

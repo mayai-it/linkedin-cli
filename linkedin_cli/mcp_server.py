@@ -9,10 +9,11 @@ CRITICAL: never write to stdout — the stdio transport reserves it for the MCP
 protocol. All diagnostics go to stderr.
 
 Safety posture mirrors the rest of the MayAI CLI suite: read tools are free to
-call, but the two *write* tools (`linkedin_connections_send`,
-`linkedin_messages_send`) require an explicit ``confirm=True`` from the caller,
-support ``dry_run=True`` for validation only, and are rate-limited per session
-on top of the on-disk daily quotas the underlying API layer already enforces.
+call (the two job tools are bounded by the 30/day `jobs` quota), but the two
+*write* tools (`linkedin_connections_send`, `linkedin_messages_send`) require
+an explicit ``confirm=True`` from the caller, support ``dry_run=True`` for
+validation only, and are rate-limited per session on top of the on-disk daily
+quotas the underlying API layer already enforces.
 """
 
 from __future__ import annotations
@@ -28,12 +29,13 @@ from mcp.server.fastmcp import Context, FastMCP
 from mcp.server.fastmcp.exceptions import ToolError
 from mcp.server.session import ServerSession
 
-from linkedin_cli.api import LinkedInAPIError, LinkedInClient
+from linkedin_cli.api import LinkedInAPIError, LinkedInBlockedError, LinkedInClient
 from linkedin_cli.api.connections import (
     list_connections,
     list_pending_invitations,
     send_invitation,
 )
+from linkedin_cli.api.jobs import JobsInputError, get_job, search_jobs
 from linkedin_cli.api.messages import list_conversations, send_message
 from linkedin_cli.api.profile import get_profile
 from linkedin_cli.api.search import search_companies, search_people
@@ -263,6 +265,93 @@ def linkedin_messages_list(
     except LinkedInAPIError as exc:
         raise ToolError(str(exc)) from exc
     return [c.to_dict() for c in convs]
+
+
+def _jobs_error(exc: Exception) -> ToolError:
+    if isinstance(exc, LinkedInBlockedError):
+        return ToolError(
+            f"blocked by LinkedIn ({exc.reason}): {exc}. Stop all LinkedIn calls; "
+            "do NOT retry. The user must open linkedin.com in a browser and complete "
+            "the verification, then run `linkedin auth login`."
+        )
+    return ToolError(str(exc))
+
+
+@mcp.tool()
+def linkedin_jobs_search(
+    ctx: Context[ServerSession, AppContext],
+    keywords: str = "",
+    location: str | None = None,
+    geo_id: str | None = None,
+    experience: list[str] | None = None,
+    job_types: list[str] | None = None,
+    date_posted: str = "week",
+    workplace: list[str] | None = None,
+    sort: str = "recent",
+    limit: int = 25,
+    start: int = 0,
+) -> list[dict[str, Any]]:
+    """Search LinkedIn job postings (read-only).
+
+    Each page of up to 25 results is one call against the daily `jobs` quota
+    (30/day at most) — prefer one well-filtered search over many small ones.
+
+    Args:
+        keywords: Free-text query, e.g. "data scientist".
+        location: Location name ("Milan, Italy"); resolved to a geoId and cached.
+            The first lookup of a new name costs one extra call.
+        geo_id: LinkedIn geoId; takes precedence over `location`.
+        experience: Any of internship, entry, associate, mid-senior, director, executive.
+        job_types: Any of full-time, part-time, contract, temporary, internship,
+            volunteer, other.
+        date_posted: 24h, week (default), month or any.
+        workplace: Any of onsite, remote, hybrid.
+        sort: recent (default) or relevant.
+        limit: Max postings (1-100, default 25).
+        start: Offset for pagination.
+
+    Returns:
+        One dict per posting: `job_id`, `title`, `company`, `location`,
+        `listed_at` (ISO UTC), `url` (https://www.linkedin.com/jobs/view/<id>/),
+        and `easy_apply` when the card says.
+    """
+    _, client = _require(ctx)
+    try:
+        cards = search_jobs(
+            client,
+            keywords,
+            location=location,
+            geo_id=geo_id,
+            experience=experience or (),
+            job_types=job_types or (),
+            date_posted=date_posted,
+            workplace=workplace or (),
+            sort=sort,
+            limit=limit,
+            start=start,
+        )
+    except (LinkedInAPIError, JobsInputError) as exc:
+        raise _jobs_error(exc) from exc
+    return [c.to_dict() for c in cards]
+
+
+@mcp.tool()
+def linkedin_jobs_get(
+    ctx: Context[ServerSession, AppContext],
+    job: str,
+) -> dict[str, Any]:
+    """Fetch one job posting's description, apply method and open/closed state.
+
+    One call against the daily `jobs` quota.
+
+    Args:
+        job: A numeric job id or a https://www.linkedin.com/jobs/view/<id>/ URL.
+    """
+    _, client = _require(ctx)
+    try:
+        return get_job(client, job).to_dict()
+    except (LinkedInAPIError, JobsInputError) as exc:
+        raise _jobs_error(exc) from exc
 
 
 @mcp.tool()
